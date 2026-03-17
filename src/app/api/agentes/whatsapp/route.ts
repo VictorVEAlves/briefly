@@ -114,7 +114,8 @@ export async function POST(req: Request) {
     // 4. Gera mensagens via Claude
     const rawResponse = await generateText(
       SYSTEM_PROMPT,
-      buildWhatsAppPrompt(campanha as Record<string, unknown>, briefingContent, listas)
+      buildWhatsAppPrompt(campanha as Record<string, unknown>, briefingContent, listas),
+      1200
     );
 
     // 5. Parseia JSON da resposta (trata possível wrapper ```json ... ```)

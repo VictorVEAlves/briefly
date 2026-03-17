@@ -41,6 +41,8 @@ export default async function AprovacaoPage({ params }: PageProps) {
       initialCampanha={campanha}
       initialOutputs={outputs ?? []}
       initialLogs={logs ?? []}
+      supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''}
+      supabaseAnonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''}
     />
   );
 }

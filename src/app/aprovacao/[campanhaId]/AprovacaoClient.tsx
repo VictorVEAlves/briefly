@@ -46,6 +46,8 @@ type Props = {
   initialCampanha: Campanha;
   initialOutputs: CampanhaOutput[];
   initialLogs: AgenteLog[];
+  supabaseUrl: string;
+  supabaseAnonKey: string;
 };
 
 function parseEmailContent(conteudo: string) {
@@ -482,6 +484,8 @@ export default function AprovacaoClient({
   initialCampanha,
   initialOutputs,
   initialLogs,
+  supabaseUrl,
+  supabaseAnonKey,
 }: Props) {
   const [campanha, setCampanha] = useState<Campanha>(initialCampanha);
   const [outputs, setOutputs] = useState<CampanhaOutput[]>(initialOutputs);
@@ -492,7 +496,12 @@ export default function AprovacaoClient({
   const [approvalError, setApprovalError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createBrowserClient();
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('Supabase client config ausente no cliente de aprovacao.');
+      return;
+    }
+
+    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
     const outputsSub = supabase
       .channel(`outputs-${campanhaId}`)
@@ -540,7 +549,7 @@ export default function AprovacaoClient({
       supabase.removeChannel(outputsSub);
       supabase.removeChannel(logsSub);
     };
-  }, [campanhaId]);
+  }, [campanhaId, supabaseAnonKey, supabaseUrl]);
 
   const handleApprove = async (outputId: string) => {
     setApprovingId(outputId);

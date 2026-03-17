@@ -90,12 +90,16 @@ export async function POST(req: Request) {
     }
 
     // 2. Gera briefing com Claude
+    const generationStartedAt = Date.now();
     const briefingMarkdown = await generateText(
       SYSTEM_PROMPT,
-      buildBriefingPrompt(campanha as Record<string, unknown>)
+      buildBriefingPrompt(campanha as Record<string, unknown>),
+      1800
     );
+    console.log('[briefing] Claude finalizou em ms:', Date.now() - generationStartedAt);
 
     // 3. Cria lista no ClickUp dentro da pasta Campanhas
+    const clickupStartedAt = Date.now();
     const lista = await createList(campanha.nome);
     console.log('[briefing] lista ClickUp criada:', lista.id);
 
@@ -105,6 +109,7 @@ export async function POST(req: Request) {
       briefingMarkdown
     );
     console.log('[briefing] doc ClickUp criado:', doc.id);
+    console.log('[briefing] ClickUp finalizado em ms:', Date.now() - clickupStartedAt);
 
     // 5. Atualiza campanha com IDs do ClickUp
     await supabaseAdmin

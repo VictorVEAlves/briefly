@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     const rawResponse = await generateText(
       SYSTEM_PROMPT,
       buildEmailPrompt(campanha as Record<string, unknown>, briefingContent),
-      8000 // emails HTML precisam de mais tokens
+      3500
     );
 
     // 4. Extrai assunto, preview e HTML da resposta
