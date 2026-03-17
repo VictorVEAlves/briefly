@@ -14,7 +14,7 @@ import {
   StatusBadge,
   cn,
 } from '@/components/ui/chrome';
-import { createBrowserClient } from '@/lib/supabase';
+import { createBrowserClient } from '@/lib/supabase-browser';
 import type { AgenteLog, Campanha, CampanhaOutput, WhatsAppMessage } from '@/types/campanha';
 
 const TIPO_LABELS: Record<string, string> = {
