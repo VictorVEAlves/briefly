@@ -131,7 +131,7 @@ export async function POST(req: Request) {
 
     if (taskId) {
       await updateTask(taskId, {
-        status: 'in review',
+        status: 'em revisão',
         description: buildTaskDescription(doc.id, doc.title, assunto, preview),
       }).catch((e) => console.warn('[email] falha ao atualizar task:', e.message));
     }
@@ -151,7 +151,7 @@ export async function POST(req: Request) {
     }
 
     if (taskId) {
-      await updateTask(taskId, { status: 'blocked' }).catch(() => {});
+      await updateTask(taskId, { status: 'bloqueado' }).catch(() => {});
     }
 
     return NextResponse.json({ error: msg }, { status: 500 });
