@@ -5,9 +5,15 @@
 export const maxDuration = 60;
 
 import { NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTask, calcularDueDate } from '@/lib/clickup';
-import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
+import {
+  callAgent,
+  logAgente,
+  validateInternalSecret,
+  unauthorizedResponse,
+} from '@/lib/agente-utils';
 
 // Retorna o array de tasks a criar baseado nos canais e nas datas da campanha
 function buildTasks(
@@ -107,6 +113,60 @@ function buildTasks(
   return tasks;
 }
 
+function getAgentTag(tags?: string[]): string | null {
+  const agentTag = tags?.find((tag) => tag.startsWith('agente:'));
+  return agentTag ? agentTag.replace('agente:', '') : null;
+}
+
+async function dispatchGeneratedAgents(
+  baseUrl: string,
+  campanhaId: string,
+  createdTasks: Array<{ id: string; tags?: string[] }>
+): Promise<void> {
+  const firstTaskByAgent = new Map<string, string>();
+
+  for (const task of createdTasks) {
+    const agent = getAgentTag(task.tags);
+    if (agent && !firstTaskByAgent.has(agent)) {
+      firstTaskByAgent.set(agent, task.id);
+    }
+  }
+
+  await Promise.allSettled(
+    Array.from(firstTaskByAgent.entries()).map(async ([agent, taskId]) => {
+      const pathByAgent: Record<string, string> = {
+        email: '/api/agentes/email',
+        whatsapp: '/api/agentes/whatsapp',
+        artes: '/api/agentes/artes',
+      };
+
+      const path = pathByAgent[agent];
+      if (!path) return;
+
+      const response = await callAgent(path, { campanhaId, taskId }, { baseUrl });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'erro desconhecido');
+        throw new Error(`${agent} -> ${response.status}: ${errorText}`);
+      }
+    })
+  ).then(async (results) => {
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length > 0) {
+      await logAgente(
+        campanhaId,
+        'tasks',
+        'erro',
+        `Falha ao disparar agentes apos criar tasks: ${failures.length}`
+      );
+      failures.forEach((failure) => {
+        if (failure.status === 'rejected') {
+          console.error('[tasks] falha ao disparar agente:', failure.reason);
+        }
+      });
+    }
+  });
+}
+
 export async function POST(req: Request) {
   if (!validateInternalSecret(req)) return unauthorizedResponse();
 
@@ -120,6 +180,7 @@ export async function POST(req: Request) {
   }
 
   await logAgente(campanhaId, 'tasks', 'iniciado', 'Criando tasks no ClickUp');
+  const baseUrl = new URL(req.url).origin;
 
   try {
     // 1. Busca campanha com o clickup_list_id já preenchido pelo agente de briefing
@@ -138,10 +199,10 @@ export async function POST(req: Request) {
       campanha.periodo_inicio
     );
 
-    const createdIds: string[] = [];
+    const createdTasks: Array<{ id: string; name: string; tags?: string[] }> = [];
     for (const task of tasksToCreate) {
       const created = await createTask(campanha.clickup_list_id, task);
-      createdIds.push(created.id);
+      createdTasks.push({ id: created.id, name: created.name, tags: task.tags });
       console.log(`[tasks] task criada: "${created.name}" (${created.id})`);
     }
 
@@ -149,10 +210,15 @@ export async function POST(req: Request) {
       campanhaId,
       'tasks',
       'concluido',
-      `${createdIds.length} tasks criadas no ClickUp`
+      `${createdTasks.length} tasks criadas no ClickUp`
     );
 
-    return NextResponse.json({ ok: true, taskIds: createdIds });
+    waitUntil(dispatchGeneratedAgents(baseUrl, campanhaId, createdTasks));
+
+    return NextResponse.json({
+      ok: true,
+      taskIds: createdTasks.map((task) => task.id),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[tasks] erro:', msg);
