@@ -1,22 +1,40 @@
-// Webhook do ClickUp — recebe eventos de taskCreated
-// Lê o custom field agente_responsavel e dispara o agente correto em background
-// CRÍTICO: deve responder 200 imediatamente (ClickUp retenta se demorar >5s)
+// Webhook do ClickUp
+// - taskCreated: dispara agentes downstream a partir das tags da task
+// - listDeleted: arquiva a campanha correspondente no Supabase
+// Deve responder 200 rapidamente para evitar retry desnecessario
 
-import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { supabaseAdmin } from '@/lib/supabase';
+import { archiveCampaignByClickupListId } from '@/lib/campaign-archive';
 import { getTask } from '@/lib/clickup';
 import { resolveAppBaseUrl } from '@/lib/agente-utils';
 
-// Mapeia o valor do custom field para o path do agente
 const AGENT_PATHS: Record<string, string> = {
   email: '/api/agentes/email',
   whatsapp: '/api/agentes/whatsapp',
   artes: '/api/agentes/artes',
 };
 
-// Valida a assinatura HMAC-SHA256 do webhook do ClickUp
+type ClickUpWebhookEvent =
+  | {
+      event: 'taskCreated';
+      task_id?: string;
+      webhook_id?: string;
+    }
+  | {
+      event: 'listDeleted';
+      list_id?: string;
+      webhook_id?: string;
+    }
+  | {
+      event: string;
+      task_id?: string;
+      list_id?: string;
+      webhook_id?: string;
+    };
+
 function validateSignature(body: string, signature: string | null): boolean {
   if (!signature) return false;
   const secret = process.env.CLICKUP_WEBHOOK_SECRET!;
@@ -24,7 +42,6 @@ function validateSignature(body: string, signature: string | null): boolean {
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
-// Dispara o agente correspondente em background
 async function dispatchAgent(
   agentePath: string,
   campanhaId: string,
@@ -49,67 +66,86 @@ async function dispatchAgent(
   }
 }
 
+async function processTaskCreated(event: Extract<ClickUpWebhookEvent, { event: 'taskCreated' }>, origin: string) {
+  if (!event.task_id) return;
+
+  const task = await getTask(event.task_id);
+  const agenteTag = task.tags?.find((tag) => tag.name.startsWith('agente:'));
+
+  if (!agenteTag) return;
+
+  const agenteValue = agenteTag.name.replace('agente:', '');
+  const agentePath = AGENT_PATHS[agenteValue];
+  if (!agentePath) {
+    console.warn(`[webhook] agente desconhecido: ${agenteValue}`);
+    return;
+  }
+
+  const { data: campanha } = await supabaseAdmin
+    .from('campanhas')
+    .select('id')
+    .eq('clickup_list_id', task.list.id)
+    .is('archived_at', null)
+    .limit(1)
+    .maybeSingle();
+
+  if (!campanha) {
+    console.warn(`[webhook] campanha nao encontrada para list ${task.list.id}`);
+    return;
+  }
+
+  console.log(`[webhook] disparando agente ${agenteValue} para campanha ${campanha.id}`);
+  await dispatchAgent(agentePath, campanha.id, task.id, origin);
+}
+
+async function processListDeleted(event: Extract<ClickUpWebhookEvent, { event: 'listDeleted' }>) {
+  if (!event.list_id) return;
+
+  const result = await archiveCampaignByClickupListId(
+    event.list_id,
+    'clickup_deleted'
+  );
+
+  if (result.outcome === 'archived') {
+    console.log(`[webhook] campanha ${result.campanhaId} arquivada via listDeleted`);
+  }
+}
+
 export async function POST(req: Request) {
   const origin = new URL(req.url).origin;
-
-  // 1. Lê body como texto para calcular HMAC (deve ser antes do json())
   const body = await req.text();
   const signature = req.headers.get('x-signature');
 
-  // 2. Valida assinatura — rejeita se inválida
   if (!validateSignature(body, signature)) {
-    console.warn('[webhook] assinatura inválida recebida');
+    console.warn('[webhook] assinatura invalida recebida');
     return new Response('Unauthorized', { status: 401 });
   }
 
-  // 3. Parse do evento
-  let event: { event: string; task_id?: string };
+  let event: ClickUpWebhookEvent;
   try {
-    event = JSON.parse(body);
+    event = JSON.parse(body) as ClickUpWebhookEvent;
   } catch {
     return new Response('Bad Request', { status: 400 });
   }
 
-  // 4. Ignora eventos que não sejam taskCreated
-  if (event.event !== 'taskCreated' || !event.task_id) {
+  if (event.event !== 'taskCreated' && event.event !== 'listDeleted') {
     return NextResponse.json({ ok: true });
   }
 
-  // 5. Processamento assíncrono — responde 200 antes de processar
   waitUntil(
     (async () => {
       try {
-        // Busca detalhes da task para ler a tag agente:xxx
-        const task = await getTask(event.task_id!);
-
-        const agenteTag = task.tags?.find((t) => t.name.startsWith('agente:'));
-
-        if (!agenteTag) {
-          // Task humana sem tag de agente — ignora silenciosamente
+        if (event.event === 'taskCreated') {
+          await processTaskCreated(
+            event as Extract<ClickUpWebhookEvent, { event: 'taskCreated' }>,
+            origin
+          );
           return;
         }
 
-        const agenteValue = agenteTag.name.replace('agente:', '');
-        const agentePath = AGENT_PATHS[agenteValue];
-        if (!agentePath) {
-          console.warn(`[webhook] agente desconhecido: ${agenteValue}`);
-          return;
-        }
-
-        // 6. Busca campanhaId pelo clickup_list_id
-        const { data: campanha } = await supabaseAdmin
-          .from('campanhas')
-          .select('id')
-          .eq('clickup_list_id', task.list.id)
-          .single();
-
-        if (!campanha) {
-          console.warn(`[webhook] campanha não encontrada para list ${task.list.id}`);
-          return;
-        }
-
-        console.log(`[webhook] disparando agente ${agenteValue} para campanha ${campanha.id}`);
-        await dispatchAgent(agentePath, campanha.id, task.id, origin);
+        await processListDeleted(
+          event as Extract<ClickUpWebhookEvent, { event: 'listDeleted' }>
+        );
       } catch (err) {
         console.error('[webhook] erro no processamento:', err);
       }

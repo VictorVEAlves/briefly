@@ -11,6 +11,7 @@ import { createTask, calcularDueDate } from '@/lib/clickup';
 import {
   callAgent,
   logAgente,
+  setAgentStatus,
   validateInternalSecret,
   unauthorizedResponse,
 } from '@/lib/agente-utils';
@@ -193,6 +194,8 @@ export async function POST(req: Request) {
     if (error || !campanha) throw new Error(`Campanha ${campanhaId} não encontrada`);
     if (!campanha.clickup_list_id) throw new Error('clickup_list_id não disponível — briefing ainda não concluído');
 
+    await setAgentStatus('tasks', 'working', `Tasks — ${campanha.nome}`, campanhaId);
+
     // 2. Monta e cria as tasks
     const tasksToCreate = buildTasks(
       campanha.canais as string[],
@@ -206,6 +209,7 @@ export async function POST(req: Request) {
       console.log(`[tasks] task criada: "${created.name}" (${created.id})`);
     }
 
+    await setAgentStatus('tasks', 'idle', null, null);
     await logAgente(
       campanhaId,
       'tasks',
@@ -222,6 +226,7 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[tasks] erro:', msg);
+    await setAgentStatus('tasks', 'error', `Erro: ${msg}`, campanhaId);
     await logAgente(campanhaId, 'tasks', 'erro', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

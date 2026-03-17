@@ -47,6 +47,8 @@ export type Campanha = {
   mensagem_central: string | null;
   clickup_list_id: string | null;
   clickup_folder_id: string | null;
+  archived_at: string | null;
+  archived_reason: string | null;
   status: string;
   created_at: string;
 };
@@ -89,6 +91,8 @@ type CampanhaInsert = {
   mensagem_central?: string | null;
   clickup_list_id?: string | null;
   clickup_folder_id?: string | null;
+  archived_at?: string | null;
+  archived_reason?: string | null;
   status?: string | null;
   created_at?: string;
 };
@@ -141,6 +145,12 @@ export type Database = {
         Row: AgenteLog;
         Insert: AgenteLogInsert;
         Update: AgenteLogUpdate;
+        Relationships: [];
+      };
+      agentes: {
+        Row: Agente;
+        Insert: AgenteInsert;
+        Update: AgenteUpdate;
         Relationships: [];
       };
     };
@@ -198,3 +208,39 @@ export type WhatsAppMessage = {
   lista: string;
   mensagem: string;
 };
+
+// ----- Agente -----------------------------------------------
+
+export type AgentStatus = 'idle' | 'working' | 'done' | 'error';
+
+export type Agente = {
+  id: string;
+  nome: string;
+  especialidade: string;
+  instrucoes?: string | null;
+  ativo_por?: string | null;
+  status: AgentStatus;
+  tarefa_atual: string | null;
+  campanha_id: string | null;
+  cor: string;
+  emoji: string;
+  ativo: boolean;
+  updated_at: string;
+};
+
+type AgenteInsert = {
+  id: string;
+  nome: string;
+  especialidade: string;
+  instrucoes?: string | null;
+  ativo_por?: string | null;
+  status?: AgentStatus | null;
+  tarefa_atual?: string | null;
+  campanha_id?: string | null;
+  cor?: string | null;
+  emoji?: string | null;
+  ativo?: boolean | null;
+  updated_at?: string;
+};
+
+type AgenteUpdate = Partial<AgenteInsert>;

@@ -5,6 +5,24 @@
 
 import { supabaseAdmin } from './supabase';
 
+// Atualiza o status de um agente na tabela agentes
+export async function setAgentStatus(
+  agenteId: string,
+  status: 'idle' | 'working' | 'done' | 'error',
+  tarefaAtual?: string | null,
+  campanhaId?: string | null
+): Promise<void> {
+  await supabaseAdmin
+    .from('agentes')
+    .update({
+      status,
+      tarefa_atual: tarefaAtual ?? null,
+      campanha_id: campanhaId ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', agenteId);
+}
+
 // Salva um registro na tabela agente_logs
 export async function logAgente(
   campanhaId: string,

@@ -5,8 +5,24 @@
 const BASE_V2 = 'https://api.clickup.com/api/v2';
 const BASE_V3 = 'https://api.clickup.com/api/v3';
 
-// Helper interno — faz fetch com autenticação e trata erros
+export class ClickUpApiError extends Error {
+  status: number;
+  method: string;
+  path: string;
+  body: string;
+
+  constructor(status: number, method: string, path: string, body: string) {
+    super(`ClickUp ${method} ${path} -> ${status}: ${body}`);
+    this.name = 'ClickUpApiError';
+    this.status = status;
+    this.method = method;
+    this.path = path;
+    this.body = body;
+  }
+}
+
 async function cu<T>(base: string, path: string, options?: RequestInit): Promise<T> {
+  const method = options?.method ?? 'GET';
   const res = await fetch(`${base}${path}`, {
     ...options,
     headers: {
@@ -18,7 +34,7 @@ async function cu<T>(base: string, path: string, options?: RequestInit): Promise
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`ClickUp ${options?.method ?? 'GET'} ${path} → ${res.status}: ${body}`);
+    throw new ClickUpApiError(res.status, method, path, body);
   }
 
   return res.json() as Promise<T>;
@@ -26,7 +42,6 @@ async function cu<T>(base: string, path: string, options?: RequestInit): Promise
 
 // ----- Lists ------------------------------------------------
 
-// Cria uma lista dentro da pasta Campanhas
 export async function createList(nome: string): Promise<{ id: string; name: string }> {
   return cu<{ id: string; name: string }>(
     BASE_V2,
@@ -35,17 +50,22 @@ export async function createList(nome: string): Promise<{ id: string; name: stri
   );
 }
 
+export async function getList(
+  listId: string
+): Promise<{ id: string; name: string; folder?: { id: string; name: string } }> {
+  return cu(BASE_V2, `/list/${listId}`);
+}
+
 // ----- Tasks ------------------------------------------------
 
 type CreateTaskPayload = {
   name: string;
   description?: string;
-  due_date?: number; // Unix ms
-  priority?: number; // 1=urgent, 2=high, 3=normal, 4=low
+  due_date?: number;
+  priority?: number;
   tags?: string[];
 };
 
-// Cria uma task dentro de uma lista
 export async function createTask(
   listId: string,
   payload: CreateTaskPayload
@@ -57,7 +77,6 @@ export async function createTask(
   );
 }
 
-// Atualiza campos de uma task (status, campos customizados, etc.)
 export async function updateTask(
   taskId: string,
   data: { status?: string; description?: string }
@@ -68,7 +87,6 @@ export async function updateTask(
   });
 }
 
-// Retorna os detalhes de uma task incluindo tags e list.id
 export async function getTask(taskId: string): Promise<{
   id: string;
   name: string;
@@ -90,7 +108,6 @@ type DocParent = {
   type: 4 | 5 | 6 | 7;
 };
 
-// Cria um documento no workspace (visível na sidebar do ClickUp)
 export async function createDoc(
   titulo: string,
   conteudo: string,
@@ -116,9 +133,8 @@ export async function createDoc(
   return { id: doc.id, title: doc.name };
 }
 
-// ----- Webhook (setup manual, não chamado em runtime) ------
+// ----- Webhook (setup manual, nao chamado em runtime) ------
 
-// Registra webhook no ClickUp — executar uma única vez durante setup
 export async function registerWebhook(endpoint: string): Promise<{
   id: string;
   webhook: { id: string; secret: string };
@@ -126,13 +142,12 @@ export async function registerWebhook(endpoint: string): Promise<{
   const workspaceId = process.env.CLICKUP_WORKSPACE_ID!;
   return cu(BASE_V2, `/team/${workspaceId}/webhook`, {
     method: 'POST',
-    body: JSON.stringify({ endpoint, events: ['taskCreated'] }),
+    body: JSON.stringify({ endpoint, events: ['taskCreated', 'listDeleted'] }),
   });
 }
 
-// ----- Utilitário de data ----------------------------------
+// ----- Utilitario de data ----------------------------------
 
-// Calcula due_date como Unix ms relativo a uma data base
 export function calcularDueDate(dataBase: string, diasOffset: number): number {
   const date = new Date(dataBase);
   date.setDate(date.getDate() + diasOffset);

@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { uploadImageFromUrl, createDesignFromTemplate } from '@/lib/canva';
 import { createDoc, updateTask } from '@/lib/clickup';
-import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
+import { logAgente, setAgentStatus, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 
 function resolveAssetUrl(candidate: string, baseUrl: string): string {
   return new URL(candidate.replace(/\\/g, ''), baseUrl).toString();
@@ -94,6 +94,8 @@ export async function POST(req: Request) {
 
     if (campError || !campanha) throw new Error('Campanha nao encontrada');
 
+    await setAgentStatus('canva', 'working', `Artes — ${campanha.nome}`, campanhaId);
+
     if (!campanha.url_produto) {
       throw new Error('URL do produto nao informada - nao e possivel extrair a imagem');
     }
@@ -145,11 +147,13 @@ export async function POST(req: Request) {
       }).catch((e) => console.warn('[artes] falha ao atualizar task:', e.message));
     }
 
+    await setAgentStatus('canva', 'idle', null, null);
     await logAgente(campanhaId, 'artes', 'concluido', `Feed: ${feed.design_id} | Story: ${story.design_id}`);
     return NextResponse.json({ ok: true, feed: feed.view_url, story: story.view_url });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[artes] erro:', msg);
+    await setAgentStatus('canva', 'error', `Erro: ${msg}`, campanhaId);
     await logAgente(campanhaId, 'artes', 'erro', msg);
 
     for (const row of [feedOutput, storyOutput]) {

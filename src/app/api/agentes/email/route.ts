@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateText } from '@/lib/claude';
 import { createDoc, updateTask } from '@/lib/clickup';
-import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
+import { logAgente, setAgentStatus, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 
 const SYSTEM_PROMPT = `Voce e um copywriter especializado em e-mail marketing para ferramentas automotivas no Brasil.
 Escreve para a Fast PDR Tools, empresa de Curitiba que vende ferramentas PDR profissionais.
@@ -102,6 +102,8 @@ export async function POST(req: Request) {
 
     if (campError || !campanha) throw new Error('Campanha nao encontrada');
 
+    await setAgentStatus('email', 'working', `Email — ${campanha.nome}`, campanhaId);
+
     const { data: briefingOutput } = await supabaseAdmin
       .from('campanha_outputs')
       .select('conteudo')
@@ -145,11 +147,13 @@ export async function POST(req: Request) {
       }).catch((e) => console.warn('[email] falha ao atualizar task:', e.message));
     }
 
+    await setAgentStatus('email', 'idle', null, null);
     await logAgente(campanhaId, 'email', 'concluido', `Doc: ${doc.id}`);
     return NextResponse.json({ ok: true, docId: doc.id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[email] erro:', msg);
+    await setAgentStatus('email', 'error', `Erro: ${msg}`, campanhaId);
     await logAgente(campanhaId, 'email', 'erro', msg);
 
     if (outputRow?.id) {

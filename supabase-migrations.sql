@@ -20,9 +20,16 @@ create table if not exists campanhas (
   mensagem_central text,
   clickup_list_id text,
   clickup_folder_id text,
+  archived_at timestamptz,
+  archived_reason text,
   status text default 'rascunho',
   created_at timestamptz default now()
 );
+
+alter table campanhas add column if not exists archived_at timestamptz;
+alter table campanhas add column if not exists archived_reason text;
+create index if not exists idx_campanhas_clickup_list_id on campanhas(clickup_list_id);
+create index if not exists idx_campanhas_archived_at on campanhas(archived_at);
 
 -- Outputs dos agentes
 create table if not exists campanha_outputs (
@@ -47,8 +54,35 @@ create table if not exists agente_logs (
 );
 
 -- Habilitar Realtime
-alter publication supabase_realtime add table campanha_outputs;
-alter publication supabase_realtime add table agente_logs;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'campanha_outputs'
+  ) then
+    alter publication supabase_realtime add table public.campanha_outputs;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'agente_logs'
+  ) then
+    alter publication supabase_realtime add table public.agente_logs;
+  end if;
+end
+$$;
 
 -- Desabilitar RLS (ferramenta interna — sem multi-tenancy)
 alter table campanhas disable row level security;

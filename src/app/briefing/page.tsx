@@ -440,8 +440,8 @@ export default function BriefingPage() {
         throw new Error(error.error ?? 'Falha ao criar campanha');
       }
 
-      const { campanhaId } = await response.json();
-      router.push(`/aprovacao/${campanhaId}`);
+      await response.json();
+      router.push('/office');
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Erro ao enviar formulario');
       setIsSubmitting(false);

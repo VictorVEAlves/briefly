@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { marked } from 'marked';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import {
   AppShell,
   MetricCard,
@@ -513,7 +514,7 @@ export default function AprovacaoClient({
           table: 'campanha_outputs',
           filter: `campanha_id=eq.${campanhaId}`,
         },
-        (payload) => {
+        (payload: RealtimePostgresChangesPayload<CampanhaOutput>) => {
           const row = payload.new as CampanhaOutput;
 
           setOutputs((current) => {
@@ -539,7 +540,7 @@ export default function AprovacaoClient({
           table: 'agente_logs',
           filter: `campanha_id=eq.${campanhaId}`,
         },
-        (payload) => {
+        (payload: RealtimePostgresChangesPayload<AgenteLog>) => {
           setLogs((current) => [...current, payload.new as AgenteLog]);
         }
       )

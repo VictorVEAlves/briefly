@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateText } from '@/lib/claude';
 import { createList, createDoc } from '@/lib/clickup';
-import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
+import { logAgente, setAgentStatus, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 
 const SYSTEM_PROMPT = `Voce e um especialista em marketing digital para o mercado brasileiro de ferramentas PDR (Paintless Dent Repair) automotivo.
 A Fast PDR Tools e uma empresa de Curitiba que vende ferramentas profissionais para reparadores de amassados sem pintura.
@@ -87,6 +87,8 @@ export async function POST(req: Request) {
       throw new Error(`Campanha ${campanhaId} nao encontrada`);
     }
 
+    await setAgentStatus('briefing', 'working', `Briefing — ${campanha.nome}`, campanhaId);
+
     const generationStartedAt = Date.now();
     const briefingMarkdown = await generateText(
       SYSTEM_PROMPT,
@@ -123,12 +125,14 @@ export async function POST(req: Request) {
       status: 'pronto',
     });
 
+    await setAgentStatus('briefing', 'idle', null, null);
     await logAgente(campanhaId, 'briefing', 'concluido', `Lista: ${lista.id} | Doc: ${doc.id}`);
 
     return NextResponse.json({ ok: true, listId: lista.id, docId: doc.id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[briefing] erro:', msg);
+    await setAgentStatus('briefing', 'error', `Erro: ${msg}`, campanhaId);
     await logAgente(campanhaId, 'briefing', 'erro', msg);
     await supabaseAdmin
       .from('campanha_outputs')

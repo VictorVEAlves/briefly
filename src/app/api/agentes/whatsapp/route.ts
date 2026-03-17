@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateText, parseJsonFromResponse } from '@/lib/claude';
 import { createDoc, updateTask } from '@/lib/clickup';
-import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
+import { logAgente, setAgentStatus, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 import type { WhatsAppMessage } from '@/types/campanha';
 
 const SYSTEM_PROMPT = `Voce e um copywriter especializado em mensagens de WhatsApp marketing para ferramentas de PDR automotivo.
@@ -117,6 +117,8 @@ export async function POST(req: Request) {
 
     if (campError || !campanha) throw new Error('Campanha nao encontrada');
 
+    await setAgentStatus('whatsapp', 'working', `WhatsApp — ${campanha.nome}`, campanhaId);
+
     const { data: briefingOutput } = await supabaseAdmin
       .from('campanha_outputs')
       .select('conteudo')
@@ -160,11 +162,13 @@ export async function POST(req: Request) {
       }).catch((e) => console.warn('[whatsapp] falha ao atualizar task:', e.message));
     }
 
+    await setAgentStatus('whatsapp', 'idle', null, null);
     await logAgente(campanhaId, 'whatsapp', 'concluido', `${messages.length} mensagens | Doc: ${doc.id}`);
     return NextResponse.json({ ok: true, docId: doc.id, count: messages.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[whatsapp] erro:', msg);
+    await setAgentStatus('whatsapp', 'error', `Erro: ${msg}`, campanhaId);
     await logAgente(campanhaId, 'whatsapp', 'erro', msg);
 
     if (outputRow?.id) {
