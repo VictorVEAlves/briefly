@@ -56,8 +56,20 @@ export function drawFloorTile(
   ctx.fillStyle = color;
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 
+  // subtle inner bevel (top-left lighter, bottom-right darker)
+  ctx.fillStyle = 'rgba(255,255,255,0.035)';
+  ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, 1); // inner top
+  ctx.fillRect(x + 1, y + 1, 1, TILE_SIZE - 2); // inner left
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  ctx.fillRect(x + 1, y + TILE_SIZE - 2, TILE_SIZE - 2, 1); // inner bottom
+  ctx.fillRect(x + TILE_SIZE - 2, y + 1, 1, TILE_SIZE - 2); // inner right
+
+  // grout lines (dark top + left, with 1px highlight at top for depth)
   ctx.fillStyle = OFFICE_COLORS.grout;
   ctx.fillRect(x, y, TILE_SIZE, 1);
   ctx.fillRect(x, y, 1, TILE_SIZE);
+  // grout highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(x, y, TILE_SIZE, 1);
 }
 
