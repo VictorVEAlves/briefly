@@ -133,7 +133,7 @@ export function renderOfficeFrame({
   drawPlantsAndSteam(ctx, timeMs, reducedMotion);
   drawMonitorStates(ctx, agents, timeMs);
   drawDataParticles(ctx, agents, timeMs, reducedMotion);
-  drawAgents(ctx, agents, machines, timeMs);
+  drawAgents(ctx, agents, machines, timeMs, hoveredId, selectedId);
   drawStationBadges(ctx, agents);
   drawInteractionHighlight(ctx, hoveredId, selectedId);
 
@@ -307,12 +307,17 @@ function drawAgents(
   ctx: CanvasRenderingContext2D,
   agents: OfficeAgentStatus[],
   machines: AgentMachineMap,
-  timeMs: number
+  timeMs: number,
+  hoveredId: OfficeEntityId | null,
+  selectedId: OfficeEntityId | null
 ) {
   for (const agent of agents) {
     const machine = machines[agent.id];
     drawAgentCharacter(ctx, machine, getCoreAgentConfig(agent.id), timeMs);
-    drawSpeechBubble(ctx, OFFICE_STATIONS[agent.id], machine.bubbleText, agent.color);
+    const showBubble = hoveredId === agent.id || selectedId === agent.id;
+    if (showBubble) {
+      drawSpeechBubble(ctx, OFFICE_STATIONS[agent.id], machine.bubbleText, agent.color);
+    }
     drawStatusDot(ctx, machine.pixel.x + 10, machine.pixel.y - 2, agent.status);
   }
 }
