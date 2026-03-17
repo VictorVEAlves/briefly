@@ -32,9 +32,9 @@ const briefingSchema = z.object({
 });
 
 // Roda os agentes de briefing e tasks em sequência
-async function runAgentPipeline(campanhaId: string): Promise<void> {
+async function runAgentPipeline(campanhaId: string, baseUrl: string): Promise<void> {
   // Agente briefing: cria lista no ClickUp e gera o doc de briefing
-  const briefingRes = await callAgent('/api/agentes/briefing', { campanhaId });
+  const briefingRes = await callAgent('/api/agentes/briefing', { campanhaId }, { baseUrl });
   if (!briefingRes.ok) {
     const err = await briefingRes.text().catch(() => 'erro desconhecido');
     console.error('[orchestrator] briefing agent falhou:', err);
@@ -46,7 +46,7 @@ async function runAgentPipeline(campanhaId: string): Promise<void> {
   }
 
   // Agente tasks: cria as tasks no ClickUp (depende do clickup_list_id criado pelo briefing)
-  const tasksRes = await callAgent('/api/agentes/tasks', { campanhaId });
+  const tasksRes = await callAgent('/api/agentes/tasks', { campanhaId }, { baseUrl });
   if (!tasksRes.ok) {
     const err = await tasksRes.text().catch(() => 'erro desconhecido');
     console.error('[orchestrator] tasks agent falhou:', err);
@@ -73,6 +73,7 @@ export async function POST(req: Request) {
   }
 
   const data = parsed.data;
+  const baseUrl = new URL(req.url).origin;
 
   // 2. Salva campanha no Supabase com status 'gerando'
   const { data: campanha, error: dbError } = await supabaseAdmin
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
   );
 
   // 3. Responde imediatamente — pipeline roda em background
-  waitUntil(runAgentPipeline(campanha.id));
+  waitUntil(runAgentPipeline(campanha.id, baseUrl));
 
   return NextResponse.json({ campanhaId: campanha.id });
 }

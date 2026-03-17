@@ -26,7 +26,7 @@ const envSchema = z.object({
 
   // Interno
   INTERNAL_API_SECRET: z.string().min(1, 'INTERNAL_API_SECRET é obrigatório'),
-  NEXT_PUBLIC_APP_URL: z.string().url('NEXT_PUBLIC_APP_URL deve ser uma URL válida'),
+  NEXT_PUBLIC_APP_URL: z.string().url('NEXT_PUBLIC_APP_URL deve ser uma URL válida').optional(),
 });
 
 // Usar safeParse para mensagem de erro amigável

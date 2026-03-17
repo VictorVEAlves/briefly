@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { waitUntil } from '@vercel/functions';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getTask } from '@/lib/clickup';
+import { resolveAppBaseUrl } from '@/lib/agente-utils';
 
 // Mapeia o valor do custom field para o path do agente
 const AGENT_PATHS: Record<string, string> = {
@@ -24,8 +25,13 @@ function validateSignature(body: string, signature: string | null): boolean {
 }
 
 // Dispara o agente correspondente em background
-async function dispatchAgent(agentePath: string, campanhaId: string, taskId: string): Promise<void> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL!;
+async function dispatchAgent(
+  agentePath: string,
+  campanhaId: string,
+  taskId: string,
+  origin: string
+): Promise<void> {
+  const baseUrl = resolveAppBaseUrl(origin);
   try {
     const res = await fetch(`${baseUrl}${agentePath}`, {
       method: 'POST',
@@ -44,6 +50,8 @@ async function dispatchAgent(agentePath: string, campanhaId: string, taskId: str
 }
 
 export async function POST(req: Request) {
+  const origin = new URL(req.url).origin;
+
   // 1. Lê body como texto para calcular HMAC (deve ser antes do json())
   const body = await req.text();
   const signature = req.headers.get('x-signature');
@@ -101,7 +109,7 @@ export async function POST(req: Request) {
         }
 
         console.log(`[webhook] disparando agente ${agenteValue} para campanha ${campanha.id}`);
-        await dispatchAgent(agentePath, campanha.id, task.id);
+        await dispatchAgent(agentePath, campanha.id, task.id, origin);
       } catch (err) {
         console.error('[webhook] erro no processamento:', err);
       }
