@@ -119,7 +119,7 @@ export default function PixelOffice({
     if (hoveredId === 'hub') {
       return {
         title: 'BRIEFLY Hub',
-        subtitle: `${metrics.activeCampaigns} campanhas ativas · ${extraAgents.length} agentes extras · ${logs.length} logs visiveis`,
+        subtitle: `${metrics.activeCampaigns} campanhas ativas · ${metrics.readyCampaigns} prontas · ${extraAgents.length} agentes extras · ${logs.length} logs`,
         status: metrics.errors > 0 ? 'working' : 'idle',
         progressLabel: `${metrics.outputsGenerated} outputs`,
       } as const;
@@ -137,7 +137,16 @@ export default function PixelOffice({
           ? `${hoveredAgent.tasksCompleted}/${hoveredAgent.tasksTotal}`
           : 'sem carga',
     } as const;
-  }, [agents, extraAgents.length, hoveredId, logs.length, metrics.activeCampaigns, metrics.errors, metrics.outputsGenerated]);
+  }, [
+    agents,
+    extraAgents.length,
+    hoveredId,
+    logs.length,
+    metrics.activeCampaigns,
+    metrics.errors,
+    metrics.outputsGenerated,
+    metrics.readyCampaigns,
+  ]);
 
   useGameLoop(({ delta, time }) => {
     const canvas = canvasRef.current;

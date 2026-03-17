@@ -16,7 +16,6 @@ import {
   type OfficeMetrics,
   type OfficeStatusStore,
   isActiveCampaign,
-  isOutputAwaitingApproval,
   isOutputCompleted,
 } from '../agents/agentConfig';
 
@@ -35,6 +34,7 @@ const EMPTY_SNAPSHOT: OfficeSnapshot = {
 };
 
 const DONE_WINDOW_MS = 2500;
+const SNAPSHOT_POLL_MS = 1500;
 type RealtimeChannelStatus =
   | 'SUBSCRIBED'
   | 'TIMED_OUT'
@@ -108,6 +108,31 @@ export function useAgentStatus(): OfficeStatusStore {
   }, [refreshSnapshot]);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshSnapshot();
+    }, SNAPSHOT_POLL_MS);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshSnapshot();
+      }
+    };
+
+    const handleFocus = () => {
+      void refreshSnapshot();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [refreshSnapshot]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setNowMs(Date.now());
     }, 500);
@@ -170,6 +195,9 @@ export function useAgentStatus(): OfficeStatusStore {
       )
       .subscribe((status: RealtimeChannelStatus) => {
         setConnectionState(mapRealtimeStatus(status));
+        if (status === 'SUBSCRIBED') {
+          void refreshSnapshot();
+        }
       });
 
     return () => {
@@ -201,131 +229,150 @@ function deriveOfficeStore({
   connectionState: OfficeConnectionState;
   doneUntilByAgent: Record<string, number>;
 }): OfficeStatusStore {
-  const campanhasAtivas = snapshot.campanhas.filter(isActiveCampaign);
+  const coreAgents = deriveCoreAgents({
+    snapshot,
+    nowMs,
+    doneUntilByAgent,
+  });
 
   return {
-    coreAgents: CORE_AGENT_CONFIGS.map((config) => {
-      const relevantCampaigns = campanhasAtivas.filter((campanha) =>
-        isCampaignRelevant(campanha, config.channels)
-      );
-      const relevantCampaignIds = new Set(relevantCampaigns.map((item) => item.id));
-      const relevantOutputs = snapshot.outputs.filter(
-        (output) =>
-          relevantCampaignIds.has(output.campanha_id) &&
-          config.outputTypes.includes(output.tipo as OutputTipo)
-      );
-      const relevantLogs = snapshot.logs.filter(
-        (log) =>
-          relevantCampaignIds.has(log.campanha_id) &&
-          log.agente === config.backendAgent
-      );
-
-      const latestLog = getLatestByCreatedAt(relevantLogs);
-      const latestOutput = getLatestByCreatedAt(relevantOutputs);
-      const latestEvent = pickLatestEvent(latestLog, latestOutput);
-
-      const latestCompletedLog = getLatestByCreatedAt(
-        relevantLogs.filter((log) => log.status === 'concluido')
-      );
-      const latestErrorLog = getLatestByCreatedAt(
-        relevantLogs.filter((log) => log.status === 'erro')
-      );
-      const latestCompletedOutput = getLatestByCreatedAt(
-        relevantOutputs.filter(isOutputCompleted)
-      );
-      const latestErrorOutput = getLatestByCreatedAt(
-        relevantOutputs.filter((output) => output.status === 'erro')
-      );
-
-      const latestWorkingByCampaign = new Map<string, AgenteLog>();
-      for (const log of relevantLogs) {
-        const existing = latestWorkingByCampaign.get(log.campanha_id);
-        if (!existing || toTimestamp(log.created_at) > toTimestamp(existing.created_at)) {
-          latestWorkingByCampaign.set(log.campanha_id, log);
-        }
-      }
-
-      const hasWorking = Array.from(latestWorkingByCampaign.values()).some(
-        (log) => log.status === 'iniciado'
-      );
-      const hasWaiting = relevantCampaigns.some((campanha) => {
-        if (config.id === 'tasks') {
-          return campanha.status === 'em_revisao';
-        }
-
-        const campaignOutputs = relevantOutputs.filter(
-          (output) => output.campanha_id === campanha.id
-        );
-
-        return (
-          campanha.status === 'em_revisao' &&
-          campaignOutputs.some(isOutputAwaitingApproval)
-        );
-      });
-
-      const latestErrorTs = Math.max(
-        toTimestamp(latestErrorLog?.created_at),
-        toTimestamp(latestErrorOutput?.created_at)
-      );
-      const latestSuccessTs = Math.max(
-        toTimestamp(latestCompletedLog?.created_at),
-        toTimestamp(latestCompletedOutput?.created_at)
-      );
-
-      let status: OfficeAgentStatus['status'] = 'idle';
-      if (latestErrorTs > latestSuccessTs && latestErrorTs > 0) {
-        status = 'error';
-      } else if (hasWorking) {
-        status = 'working';
-      } else if (hasWaiting) {
-        status = 'waiting';
-      } else if ((doneUntilByAgent[config.id] ?? 0) > nowMs) {
-        status = 'done';
-      }
-
-      const currentCampaign = resolveCurrentCampaign({
-        relevantCampaigns,
-        relevantLogs,
-        latestOutput,
-      });
-
-      return {
-        id: config.id,
-        displayName: config.displayName,
-        role: config.role,
-        status,
-        currentCampaign: currentCampaign?.nome,
-        lastAction:
-          latestLog?.mensagem ??
-          buildOutputAction(latestOutput) ??
-          (currentCampaign ? `Monitorando ${currentCampaign.nome}` : undefined),
-        lastActionAt: latestEvent?.created_at,
-        tasksTotal: relevantCampaigns.length,
-        tasksCompleted: computeTasksCompleted(
-          config.id,
-          relevantCampaigns,
-          relevantOutputs,
-          relevantLogs
-        ),
-        errorMessage:
-          status === 'error'
-            ? latestErrorLog?.mensagem ?? buildOutputAction(latestErrorOutput)
-            : undefined,
-        color: config.color,
-        accent: config.accent,
-        hairColor: config.hairColor,
-        clothingColor: config.clothingColor,
-        isCore: true,
-        workMode: config.workMode,
-      };
-    }),
+    coreAgents,
     extraAgents: snapshot.extraAgents,
-    globalMetrics: computeMetrics(snapshot),
+    globalMetrics: computeMetrics(snapshot, coreAgents),
     recentLogs: [...snapshot.logs]
       .sort(sortByCreatedAtDesc)
       .slice(0, 28),
     connectionState,
   };
+}
+
+function deriveCoreAgents({
+  snapshot,
+  nowMs,
+  doneUntilByAgent,
+}: {
+  snapshot: OfficeSnapshot;
+  nowMs: number;
+  doneUntilByAgent: Record<string, number>;
+}): OfficeAgentStatus[] {
+  const campanhasAtivas = snapshot.campanhas.filter(isActiveCampaign);
+
+  return CORE_AGENT_CONFIGS.map((config) => {
+    const relevantCampaigns = campanhasAtivas.filter((campanha) =>
+      isCampaignRelevant(campanha, config.channels)
+    );
+    const relevantCampaignIds = new Set(relevantCampaigns.map((item) => item.id));
+    const relevantOutputs = snapshot.outputs.filter(
+      (output) =>
+        relevantCampaignIds.has(output.campanha_id) &&
+        config.outputTypes.includes(output.tipo as OutputTipo)
+    );
+    const relevantLogs = snapshot.logs.filter(
+      (log) =>
+        relevantCampaignIds.has(log.campanha_id) &&
+        log.agente === config.backendAgent
+    );
+    const visibleLogs = relevantLogs.filter(
+      (log) => !isIgnoredOfficeErrorLog(config.id, log)
+    );
+
+    const latestLog = getLatestByCreatedAt(visibleLogs);
+    const latestOutput = getLatestByCreatedAt(relevantOutputs);
+    const latestEvent = pickLatestEvent(latestLog, latestOutput);
+
+    const latestCompletedLog = getLatestByCreatedAt(
+      visibleLogs.filter((log) => log.status === 'concluido')
+    );
+    const latestErrorLog = getLatestByCreatedAt(
+      visibleLogs.filter((log) => log.status === 'erro')
+    );
+    const latestCompletedOutput = getLatestByCreatedAt(
+      relevantOutputs.filter(isOutputCompleted)
+    );
+    const latestErrorOutput = getLatestByCreatedAt(
+      relevantOutputs.filter((output) => output.status === 'erro')
+    );
+
+    const latestWorkingByCampaign = new Map<string, AgenteLog>();
+    for (const log of relevantLogs) {
+      const existing = latestWorkingByCampaign.get(log.campanha_id);
+      if (!existing || toTimestamp(log.created_at) > toTimestamp(existing.created_at)) {
+        latestWorkingByCampaign.set(log.campanha_id, log);
+      }
+    }
+
+    const hasWorking = Array.from(latestWorkingByCampaign.values()).some(
+      (log) => log.status === 'iniciado'
+    );
+    const hasDone = hasCompletedWork(
+      config.id,
+      relevantCampaigns,
+      relevantOutputs,
+      relevantLogs
+    );
+
+    const latestErrorTs = Math.max(
+      toTimestamp(latestErrorLog?.created_at),
+      toTimestamp(latestErrorOutput?.created_at)
+    );
+    const latestSuccessTs = Math.max(
+      toTimestamp(latestCompletedLog?.created_at),
+      toTimestamp(latestCompletedOutput?.created_at)
+    );
+    const hasError = latestErrorTs > latestSuccessTs && latestErrorTs > 0;
+    const hasWaiting =
+      relevantCampaigns.length > 0 &&
+      !hasWorking &&
+      !hasDone &&
+      !hasError;
+
+    let status: OfficeAgentStatus['status'] = 'idle';
+    if (hasError) {
+      status = 'error';
+    } else if (hasWorking) {
+      status = 'working';
+    } else if (hasDone || (doneUntilByAgent[config.id] ?? 0) > nowMs) {
+      status = 'done';
+    } else if (hasWaiting) {
+      status = 'waiting';
+    }
+
+    const currentCampaign = resolveCurrentCampaign({
+      relevantCampaigns,
+      relevantLogs: visibleLogs,
+      latestOutput,
+    });
+
+    return {
+      id: config.id,
+      displayName: config.displayName,
+      role: config.role,
+      status,
+      currentCampaign: currentCampaign?.nome,
+      lastAction:
+        latestLog?.mensagem ??
+        buildOutputAction(latestOutput) ??
+        (currentCampaign ? `Monitorando ${currentCampaign.nome}` : undefined),
+      lastActionAt: latestEvent?.created_at,
+      tasksTotal: relevantCampaigns.length,
+      tasksCompleted: computeTasksCompleted(
+        config.id,
+        relevantCampaigns,
+        relevantOutputs,
+        relevantLogs
+      ),
+      errorMessage:
+        status === 'error'
+          ? latestErrorLog?.mensagem ?? buildOutputAction(latestErrorOutput)
+          : undefined,
+      color: config.color,
+      accent: config.accent,
+      hairColor: config.hairColor,
+      clothingColor: config.clothingColor,
+      isCore: true as const,
+      workMode: config.workMode,
+    };
+  });
 }
 
 function buildCompletionSignatures(snapshot: OfficeSnapshot) {
@@ -413,24 +460,104 @@ function computeTasksCompleted(
   ).length;
 }
 
-function computeMetrics(snapshot: OfficeSnapshot): OfficeMetrics {
-  const activeCampaigns = snapshot.campanhas.filter(isActiveCampaign).length;
-  const pendingTasks = snapshot.outputs.filter(
+function computeMetrics(
+  snapshot: OfficeSnapshot,
+  coreAgents: OfficeAgentStatus[]
+): OfficeMetrics {
+  const campanhasAtivas = snapshot.campanhas.filter(isActiveCampaign);
+  const activeCampaignIds = new Set(campanhasAtivas.map((campanha) => campanha.id));
+  const activeOutputs = snapshot.outputs.filter((output) =>
+    activeCampaignIds.has(output.campanha_id)
+  );
+
+  const activeCampaigns = campanhasAtivas.length;
+  const readyCampaigns = campanhasAtivas.filter((campanha) =>
+    isCampaignReady(campanha, activeOutputs)
+  ).length;
+  const pendingTasks = activeOutputs.filter(
     (output) => output.status === 'pendente' || output.status === 'gerando'
   ).length;
-  const outputsGenerated = snapshot.outputs.filter(isOutputCompleted).length;
-  const approvals = snapshot.outputs.filter((output) => output.status === 'pronto').length;
-  const errors =
-    snapshot.outputs.filter((output) => output.status === 'erro').length +
-    snapshot.logs.filter((log) => log.status === 'erro').length;
+  const outputsGenerated = activeOutputs.filter(isOutputCompleted).length;
+  const approvals = activeOutputs.filter((output) => output.status === 'pronto').length;
+  const errors = coreAgents.filter((agent) => agent.status === 'error').length;
 
   return {
     activeCampaigns,
+    readyCampaigns,
     pendingTasks,
     outputsGenerated,
     approvals,
     errors,
   };
+}
+
+function hasCompletedWork(
+  agentId: OfficeAgentStatus['id'],
+  campaigns: Campanha[],
+  outputs: CampanhaOutput[],
+  logs: AgenteLog[]
+) {
+  if (campaigns.length === 0) return false;
+
+  if (agentId === 'tasks') {
+    return computeTasksCompleted(agentId, campaigns, outputs, logs) > 0;
+  }
+
+  return outputs.some(isOutputCompleted);
+}
+
+function isCampaignReady(campanha: Campanha, outputs: CampanhaOutput[]) {
+  const expectedTypes = getExpectedOutputTypes(campanha);
+  if (expectedTypes.length === 0) return false;
+
+  const latestByType = new Map<OutputTipo, CampanhaOutput>();
+  for (const output of outputs) {
+    if (output.campanha_id !== campanha.id) continue;
+    if (!expectedTypes.includes(output.tipo as OutputTipo)) continue;
+
+    const current = latestByType.get(output.tipo as OutputTipo);
+    if (!current || toTimestamp(output.created_at) > toTimestamp(current.created_at)) {
+      latestByType.set(output.tipo as OutputTipo, output);
+    }
+  }
+
+  if (latestByType.size !== expectedTypes.length) return false;
+
+  const latestOutputs = Array.from(latestByType.values());
+  const hasCompletedOutput = latestOutputs.some(isOutputCompleted);
+
+  return hasCompletedOutput && latestOutputs.every(isOutputTerminal);
+}
+
+function getExpectedOutputTypes(campanha: Campanha): OutputTipo[] {
+  const types: OutputTipo[] = ['briefing'];
+  const canais = Array.isArray(campanha.canais) ? campanha.canais : [];
+
+  if (canais.includes('email')) types.push('email');
+  if (canais.includes('whatsapp')) types.push('whatsapp');
+  if (canais.includes('instagram_feed')) types.push('arte_feed');
+  if (canais.includes('instagram_stories')) types.push('arte_story');
+
+  return types;
+}
+
+function isOutputTerminal(output: Pick<CampanhaOutput, 'status'>) {
+  return (
+    output.status === 'pronto' ||
+    output.status === 'aprovado' ||
+    output.status === 'erro'
+  );
+}
+
+function isIgnoredOfficeErrorLog(
+  agentId: OfficeAgentStatus['id'],
+  log: Pick<AgenteLog, 'mensagem'>
+) {
+  return (
+    agentId === 'tasks' &&
+    typeof log.mensagem === 'string' &&
+    log.mensagem.startsWith('Falha ao disparar agentes apos criar tasks')
+  );
 }
 
 function resolveCurrentCampaign({

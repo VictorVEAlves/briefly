@@ -39,6 +39,7 @@ export default function OfficePage() {
       <Header
         agentCount={totalAgents}
         errors={globalMetrics.errors}
+        readyCampaigns={globalMetrics.readyCampaigns}
         connectionState={connectionState}
         onNewCampaign={() => setCampaignOpen(true)}
         onHire={() => setHireOpen(true)}

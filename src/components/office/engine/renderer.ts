@@ -215,7 +215,11 @@ function drawHubPulse(
 
   ctx.fillStyle = 'rgba(244,233,255,0.72)';
   ctx.font = '7px "Geist Mono", monospace';
-  ctx.fillText(`${metrics.activeCampaigns} campanhas ao vivo`, HUB_CENTER.x, HUB_CENTER.y + 18);
+  const subtitle =
+    metrics.readyCampaigns > 0
+      ? `${metrics.readyCampaigns} pronta${metrics.readyCampaigns > 1 ? 's' : ''} para revisao`
+      : `${metrics.activeCampaigns} campanhas ao vivo`;
+  ctx.fillText(subtitle, HUB_CENTER.x, HUB_CENTER.y + 18);
 }
 
 function drawStationConnections(

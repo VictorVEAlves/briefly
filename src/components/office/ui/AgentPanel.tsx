@@ -151,6 +151,7 @@ function HubPanel({
 
       <section className="grid gap-3 sm:grid-cols-2">
         <PanelMetric label="Campanhas ativas" value={metrics.activeCampaigns} />
+        <PanelMetric label="Campanhas prontas" value={metrics.readyCampaigns} />
         <PanelMetric label="Outputs gerados" value={metrics.outputsGenerated} />
         <PanelMetric label="Tasks pendentes" value={metrics.pendingTasks} />
         <PanelMetric label="Erros" value={metrics.errors} tone="danger" />

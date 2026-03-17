@@ -26,6 +26,7 @@ export type OfficeAgentStatus = {
 
 export type OfficeMetrics = {
   activeCampaigns: number;
+  readyCampaigns: number;
   pendingTasks: number;
   outputsGenerated: number;
   approvals: number;
@@ -142,7 +143,7 @@ export const OFFICE_STATUS_META: Record<
 > = {
   idle: { label: 'Ocioso', color: '#9ca3af', glow: 'rgba(156,163,175,0.28)' },
   working: { label: 'Trabalhando', color: '#facc15', glow: 'rgba(250,204,21,0.3)' },
-  done: { label: 'Concluido', color: '#22c55e', glow: 'rgba(34,197,94,0.32)' },
+  done: { label: 'Pronto', color: '#22c55e', glow: 'rgba(34,197,94,0.32)' },
   error: { label: 'Erro', color: '#ef4444', glow: 'rgba(239,68,68,0.3)' },
   waiting: { label: 'Aguardando', color: '#cbd5e1', glow: 'rgba(203,213,225,0.28)' },
 };

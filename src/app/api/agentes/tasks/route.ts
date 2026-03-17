@@ -153,12 +153,6 @@ async function dispatchGeneratedAgents(
   ).then(async (results) => {
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length > 0) {
-      await logAgente(
-        campanhaId,
-        'tasks',
-        'erro',
-        `Falha ao disparar agentes apos criar tasks: ${failures.length}`
-      );
       failures.forEach((failure) => {
         if (failure.status === 'rejected') {
           console.error('[tasks] falha ao disparar agente:', failure.reason);

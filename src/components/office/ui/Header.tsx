@@ -6,6 +6,7 @@ import type { OfficeConnectionState } from '../agents/agentConfig';
 type HeaderProps = {
   agentCount: number;
   errors: number;
+  readyCampaigns: number;
   connectionState: OfficeConnectionState;
   onNewCampaign: () => void;
   onHire: () => void;
@@ -14,6 +15,7 @@ type HeaderProps = {
 export function Header({
   agentCount,
   errors,
+  readyCampaigns,
   connectionState,
   onNewCampaign,
   onHire,
@@ -61,6 +63,10 @@ export function Header({
         <div className="hidden items-center gap-3 md:flex">
           <HeaderPill label={`${agentCount} agentes`} />
           <HeaderPill
+            label={`${readyCampaigns} prontas`}
+            tone={readyCampaigns > 0 ? 'success' : 'neutral'}
+          />
+          <HeaderPill
             label={`${errors} erros`}
             tone={errors > 0 ? 'danger' : 'neutral'}
           />
@@ -82,7 +88,7 @@ function HeaderPill({
   tone = 'neutral',
 }: {
   label: string;
-  tone?: 'neutral' | 'danger';
+  tone?: 'neutral' | 'danger' | 'success';
 }) {
   return (
     <span
@@ -90,6 +96,8 @@ function HeaderPill({
         'inline-flex items-center rounded-full border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.24em]',
         tone === 'danger'
           ? 'border-rose-400/30 bg-rose-500/10 text-rose-200'
+          : tone === 'success'
+            ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
           : 'border-white/10 bg-white/5 text-slate-300'
       )}
     >
