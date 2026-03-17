@@ -3,7 +3,7 @@
 // 2. Claude generates the full HTML email
 // 3. Saves the output in campanha_outputs
 // 4. Creates a ClickUp doc with the generated email
-// 5. Updates the ClickUp task with doc metadata and review status
+// 5. Updates the ClickUp task with the complete email for direct use
 
 export const maxDuration = 60;
 
@@ -50,17 +50,24 @@ Dados da campanha:
 Gere o email marketing completo seguindo o formato obrigatorio.`;
 }
 
-function buildTaskDescription(docId: string, docTitle: string, assunto: string, preview: string): string {
+function buildTaskDescription(docId: string, docTitle: string, conteudo: string): string {
+  const [assuntoLine = 'ASSUNTO: Nao informado', previewLine = 'PREVIEW: Nao informado', ...rest] =
+    conteudo.split('\n');
+  const html = rest.join('\n').trim();
+
   return [
     'Conteudo gerado automaticamente pelo agente de email do Briefly.',
     '',
     `Doc ClickUp: ${docTitle}`,
     `Doc ID: ${docId}`,
     '',
-    `ASSUNTO: ${assunto || 'Nao informado'}`,
-    `PREVIEW: ${preview || 'Nao informado'}`,
+    assuntoLine,
+    previewLine,
     '',
-    'HTML completo salvo no doc do ClickUp e no Supabase.',
+    'HTML COMPLETO:',
+    '```html',
+    html,
+    '```',
   ].join('\n');
 }
 
@@ -116,9 +123,11 @@ export async function POST(req: Request) {
     const html = parts[2]?.replace(/^HTML:\s*/i, '').trim() ?? rawResponse;
     const conteudo = `ASSUNTO: ${assunto}\nPREVIEW: ${preview}\n\n${html}`;
 
-    const doc = await createDoc(`Email - ${campanha.nome}`, conteudo, campanha.clickup_list_id
-      ? { id: campanha.clickup_list_id, type: 6 }
-      : undefined);
+    const doc = await createDoc(
+      `Email - ${campanha.nome}`,
+      conteudo,
+      campanha.clickup_list_id ? { id: campanha.clickup_list_id, type: 6 } : undefined
+    );
 
     await supabaseAdmin
       .from('campanha_outputs')
@@ -132,7 +141,7 @@ export async function POST(req: Request) {
     if (taskId) {
       await updateTask(taskId, {
         status: 'em revisão',
-        description: buildTaskDescription(doc.id, doc.title, assunto, preview),
+        description: buildTaskDescription(doc.id, doc.title, conteudo),
       }).catch((e) => console.warn('[email] falha ao atualizar task:', e.message));
     }
 
