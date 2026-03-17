@@ -1,9 +1,9 @@
-// Sub-agente de WhatsApp
-// 1. Busca campanha e briefing do Supabase
-// 2. Claude gera mensagens por segmento/lista em JSON
-// 3. Salva em campanha_outputs
-// 4. Cria doc no ClickUp com as mensagens
-// 5. Atualiza task para "in review"
+// WhatsApp agent
+// 1. Fetches campanha and briefing from Supabase
+// 2. Claude generates list-specific WhatsApp messages in JSON
+// 3. Saves the output in campanha_outputs
+// 4. Creates a ClickUp doc with the rendered messages
+// 5. Updates the ClickUp task with doc metadata and message preview
 
 export const maxDuration = 60;
 
@@ -14,21 +14,25 @@ import { createDoc, updateTask } from '@/lib/clickup';
 import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 import type { WhatsAppMessage } from '@/types/campanha';
 
-const SYSTEM_PROMPT = `Você é um copywriter especializado em mensagens de WhatsApp marketing para ferramentas de PDR automotivo.
+const SYSTEM_PROMPT = `Voce e um copywriter especializado em mensagens de WhatsApp marketing para ferramentas de PDR automotivo.
 Escreve para a Fast PDR Tools, empresa de Curitiba.
 
 Regras:
-- Máximo 3 parágrafos curtos por mensagem
-- Primeira linha: saudação com {{nome}} (variável de personalização)
-- Destaque o desconto PIX se disponível
+- Maximo 3 paragrafos curtos por mensagem
+- Primeira linha: saudacao com {{nome}}
+- Destaque o desconto PIX se disponivel
 - Link do produto no final
 - Use emojis moderadamente (1-2 por mensagem)
-- Escreva em português do Brasil informal mas profissional
+- Escreva em portugues do Brasil informal mas profissional
 
-IMPORTANTE: Sua resposta deve ser APENAS um JSON array válido, sem markdown, sem explicações.
+IMPORTANTE: Sua resposta deve ser apenas um JSON array valido, sem markdown e sem explicacoes.
 Formato: [{"lista": "nome_da_lista", "mensagem": "texto completo da mensagem"}]`;
 
-function buildWhatsAppPrompt(campanha: Record<string, unknown>, briefingContent: string, listas: string[]): string {
+function buildWhatsAppPrompt(
+  campanha: Record<string, unknown>,
+  briefingContent: string,
+  listas: string[]
+): string {
   const listasTexto = listas.length > 0 ? listas.join(', ') : 'base geral';
 
   return `Gere mensagens de WhatsApp para a campanha "${campanha.nome}" da Fast PDR Tools.
@@ -38,8 +42,8 @@ Listas a atingir: ${listasTexto}
 Dados da campanha:
 - Produto: ${campanha.produto_destaque}
 - URL: ${campanha.url_produto ?? 'https://www.fastpdrtools.com.br'}
-- Desconto PIX: ${campanha.desconto_pix ? `${campanha.desconto_pix}%` : 'não informado'}
-- Parcelamento: ${campanha.parcelamento ?? 'não informado'}
+- Desconto PIX: ${campanha.desconto_pix ? `${campanha.desconto_pix}%` : 'nao informado'}
+- Parcelamento: ${campanha.parcelamento ?? 'nao informado'}
 - Tom: ${campanha.tom}
 - Mensagem central: ${campanha.mensagem_central ?? ''}
 
@@ -47,10 +51,9 @@ Resumo do briefing:
 ${briefingContent.slice(0, 1000)}
 
 Gere uma mensagem personalizada para cada lista: ${listasTexto}.
-Retorne SOMENTE o JSON array no formato especificado.`;
+Retorne somente o JSON array no formato especificado.`;
 }
 
-// Valida que o resultado do Claude tem o formato esperado
 function validateMessages(data: unknown): data is WhatsAppMessage[] {
   return (
     Array.isArray(data) &&
@@ -64,6 +67,25 @@ function validateMessages(data: unknown): data is WhatsAppMessage[] {
   );
 }
 
+function buildTaskDescription(docId: string, docTitle: string, messages: WhatsAppMessage[]): string {
+  const preview = messages
+    .map((message) => `Lista: ${message.lista}\n${message.mensagem}`)
+    .join('\n\n---\n\n');
+
+  const maxLength = 3500;
+  const previewText =
+    preview.length > maxLength ? `${preview.slice(0, maxLength).trim()}\n\n[conteudo truncado]` : preview;
+
+  return [
+    'Conteudo gerado automaticamente pelo agente de WhatsApp do Briefly.',
+    '',
+    `Doc ClickUp: ${docTitle}`,
+    `Doc ID: ${docId}`,
+    '',
+    previewText,
+  ].join('\n');
+}
+
 export async function POST(req: Request) {
   if (!validateInternalSecret(req)) return unauthorizedResponse();
 
@@ -75,7 +97,7 @@ export async function POST(req: Request) {
     taskId = body.taskId;
     if (!campanhaId) throw new Error('campanhaId ausente');
   } catch {
-    return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
+    return NextResponse.json({ error: 'Body invalido' }, { status: 400 });
   }
 
   await logAgente(campanhaId, 'whatsapp', 'iniciado', 'Gerando mensagens WhatsApp via Claude');
@@ -87,16 +109,14 @@ export async function POST(req: Request) {
     .single();
 
   try {
-    // 1. Busca campanha
     const { data: campanha, error: campError } = await supabaseAdmin
       .from('campanhas')
       .select('*')
       .eq('id', campanhaId)
       .single();
 
-    if (campError || !campanha) throw new Error('Campanha não encontrada');
+    if (campError || !campanha) throw new Error('Campanha nao encontrada');
 
-    // 2. Busca briefing para contexto
     const { data: briefingOutput } = await supabaseAdmin
       .from('campanha_outputs')
       .select('conteudo')
@@ -105,51 +125,39 @@ export async function POST(req: Request) {
       .single();
 
     const briefingContent = briefingOutput?.conteudo ?? '';
+    const listas = ['base geral'];
 
-    // 3. Determina listas (busca do log inicial onde salvamos os dados extras)
-    // Como listas_whatsapp não está na tabela campanhas, usa fallback para 'base geral'
-    // Para enviar listas, o orquestrador precisaria salvar em agente_logs
-    const listas = ['base geral']; // fallback padrão
-
-    // 4. Gera mensagens via Claude
     const rawResponse = await generateText(
       SYSTEM_PROMPT,
       buildWhatsAppPrompt(campanha as Record<string, unknown>, briefingContent, listas),
       1200
     );
 
-    // 5. Parseia JSON da resposta (trata possível wrapper ```json ... ```)
     let messages: WhatsAppMessage[];
     try {
       const parsed = parseJsonFromResponse<unknown>(rawResponse);
-      if (!validateMessages(parsed)) {
-        throw new Error('Formato JSON inválido');
-      }
+      if (!validateMessages(parsed)) throw new Error('Formato JSON invalido');
       messages = parsed;
     } catch {
-      throw new Error(`Claude retornou formato inválido para WhatsApp: ${rawResponse.slice(0, 200)}`);
+      throw new Error(`Claude retornou formato invalido para WhatsApp: ${rawResponse.slice(0, 200)}`);
     }
 
     const conteudo = JSON.stringify(messages, null, 2);
+    const docContent = messages.map((m) => `## Lista: ${m.lista}\n\n${m.mensagem}`).join('\n\n---\n\n');
+    const doc = await createDoc(`WhatsApp - ${campanha.nome}`, docContent, campanha.clickup_list_id
+      ? { id: campanha.clickup_list_id, type: 6 }
+      : undefined);
 
-    // 6. Formata mensagens como Markdown para o doc do ClickUp
-    const docContent = messages
-      .map((m) => `## Lista: ${m.lista}\n\n${m.mensagem}`)
-      .join('\n\n---\n\n');
-
-    const doc = await createDoc(`WhatsApp — ${campanha.nome}`, docContent);
-
-    // 7. Atualiza output
     await supabaseAdmin
       .from('campanha_outputs')
       .update({ conteudo, clickup_doc_id: doc.id, status: 'pronto' })
       .eq('id', outputRow!.id);
 
-    // 8. Atualiza task
     if (taskId) {
-      await updateTask(taskId, { status: 'in review' }).catch((e) =>
-        console.warn('[whatsapp] falha ao atualizar task:', e.message)
-      );
+      await updateTask(taskId, {
+        status: 'in review',
+        description: buildTaskDescription(doc.id, doc.title, messages),
+      }).catch((e) => console.warn('[whatsapp] falha ao atualizar task:', e.message));
     }
 
     await logAgente(campanhaId, 'whatsapp', 'concluido', `${messages.length} mensagens | Doc: ${doc.id}`);

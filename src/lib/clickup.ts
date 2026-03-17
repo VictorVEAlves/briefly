@@ -85,12 +85,19 @@ type DocResponse = {
   name: string;
 };
 
+type DocParent = {
+  id: string | number;
+  type: 4 | 5 | 6 | 7;
+};
+
 // Cria um documento no workspace (visível na sidebar do ClickUp)
 export async function createDoc(
   titulo: string,
-  conteudo: string
+  conteudo: string,
+  parent?: DocParent
 ): Promise<{ id: string; title: string }> {
   const workspaceId = process.env.CLICKUP_WORKSPACE_ID!;
+  const docParent = parent ?? { id: workspaceId, type: 7 };
 
   const doc = await cu<DocResponse>(
     BASE_V3,
@@ -101,7 +108,7 @@ export async function createDoc(
         name: titulo,
         content: conteudo,
         content_format: 'text/md',
-        parent: { id: workspaceId, type: 7 }, // type 7 = workspace
+        parent: docParent,
       }),
     }
   );

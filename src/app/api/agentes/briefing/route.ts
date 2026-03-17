@@ -1,10 +1,10 @@
-// Sub-agente de Briefing
-// 1. Busca campanha no Supabase
-// 2. Gera documento de briefing via Claude
-// 3. Cria lista no ClickUp dentro da pasta Campanhas
-// 4. Salva briefing como doc no ClickUp
-// 5. Atualiza campanha com clickup_list_id
-// 6. Salva output na tabela campanha_outputs
+// Briefing agent
+// 1. Fetches campanha from Supabase
+// 2. Generates the campaign briefing with Claude
+// 3. Creates the ClickUp list inside the Campanhas folder
+// 4. Creates the briefing doc in the same ClickUp list
+// 5. Persists ClickUp IDs on campanha
+// 6. Saves the output in campanha_outputs
 
 export const maxDuration = 60;
 
@@ -14,18 +14,18 @@ import { generateText } from '@/lib/claude';
 import { createList, createDoc } from '@/lib/clickup';
 import { logAgente, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 
-const SYSTEM_PROMPT = `Você é um especialista em marketing digital para o mercado brasileiro de ferramentas PDR (Paintless Dent Repair) automotivo.
-A Fast PDR Tools é uma empresa de Curitiba que vende ferramentas profissionais para reparadores de amassados sem pintura.
-Seu público: profissionais PDR autônomos, iniciantes, técnicos de granizo, e revendedores.
+const SYSTEM_PROMPT = `Voce e um especialista em marketing digital para o mercado brasileiro de ferramentas PDR (Paintless Dent Repair) automotivo.
+A Fast PDR Tools e uma empresa de Curitiba que vende ferramentas profissionais para reparadores de amassados sem pintura.
+Seu publico: profissionais PDR autonomos, iniciantes, tecnicos de granizo e revendedores.
 
-Gere um briefing completo e estratégico de campanha de marketing em Markdown.
-Seja específico, use os dados fornecidos, escreva em português do Brasil.
+Gere um briefing completo e estrategico de campanha de marketing em Markdown.
+Seja especifico, use os dados fornecidos e escreva em portugues do Brasil.
 Tom: profissional, direto, orientado a resultados.`;
 
 function buildBriefingPrompt(campanha: Record<string, unknown>): string {
   const linhas = [
     `# Briefing: ${campanha.nome}`,
-    `**Período:** ${campanha.periodo_inicio} a ${campanha.periodo_fim}`,
+    `**Periodo:** ${campanha.periodo_inicio} a ${campanha.periodo_fim}`,
     `**Produto em destaque:** ${campanha.produto_destaque}`,
   ];
 
@@ -33,12 +33,12 @@ function buildBriefingPrompt(campanha: Record<string, unknown>): string {
 
   const promocao: string[] = [];
   if (campanha.desconto_pix) promocao.push(`PIX ${campanha.desconto_pix}% off`);
-  if (campanha.desconto_cartao) promocao.push(`Cartão ${campanha.desconto_cartao}% off`);
+  if (campanha.desconto_cartao) promocao.push(`Cartao ${campanha.desconto_cartao}% off`);
   if (campanha.parcelamento) promocao.push(`Parcelamento: ${campanha.parcelamento}`);
-  if (promocao.length) linhas.push(`**Promoção:** ${promocao.join(' | ')}`);
+  if (promocao.length) linhas.push(`**Promocao:** ${promocao.join(' | ')}`);
 
   if (Array.isArray(campanha.publico)) {
-    linhas.push(`**Público-alvo:** ${(campanha.publico as string[]).join(', ')}`);
+    linhas.push(`**Publico-alvo:** ${(campanha.publico as string[]).join(', ')}`);
   }
   if (Array.isArray(campanha.canais)) {
     linhas.push(`**Canais:** ${(campanha.canais as string[]).join(', ')}`);
@@ -47,23 +47,22 @@ function buildBriefingPrompt(campanha: Record<string, unknown>): string {
   if (campanha.mensagem_central) linhas.push(`**Mensagem central:** ${campanha.mensagem_central}`);
 
   linhas.push('');
-  linhas.push(`Com base nessas informações, gere um briefing completo com as seções:
-## 1. Visão Geral
+  linhas.push(`Com base nessas informacoes, gere um briefing completo com as secoes:
+## 1. Visao Geral
 ## 2. Objetivos e Metas
 ## 3. Produto e Proposta de Valor
-## 4. Promoção Detalhada
-## 5. Público-Alvo e Segmentação
-## 6. Tom, Voz e Diretrizes de Comunicação
-## 7. Estratégia por Canal
+## 4. Promocao Detalhada
+## 5. Publico-Alvo e Segmentacao
+## 6. Tom, Voz e Diretrizes de Comunicacao
+## 7. Estrategia por Canal
 ## 8. Call to Action Principal
-## 9. Diferencias Competitivos
-## 10. Checklist de Ativação`);
+## 9. Diferenciais Competitivos
+## 10. Checklist de Ativacao`);
 
   return linhas.join('\n');
 }
 
 export async function POST(req: Request) {
-  // Valida chamada interna
   if (!validateInternalSecret(req)) return unauthorizedResponse();
 
   let campanhaId: string;
@@ -72,13 +71,12 @@ export async function POST(req: Request) {
     campanhaId = body.campanhaId;
     if (!campanhaId) throw new Error('campanhaId ausente');
   } catch {
-    return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
+    return NextResponse.json({ error: 'Body invalido' }, { status: 400 });
   }
 
   await logAgente(campanhaId, 'briefing', 'iniciado', 'Gerando briefing via Claude');
 
   try {
-    // 1. Busca campanha
     const { data: campanha, error } = await supabaseAdmin
       .from('campanhas')
       .select('*')
@@ -86,10 +84,9 @@ export async function POST(req: Request) {
       .single();
 
     if (error || !campanha) {
-      throw new Error(`Campanha ${campanhaId} não encontrada`);
+      throw new Error(`Campanha ${campanhaId} nao encontrada`);
     }
 
-    // 2. Gera briefing com Claude
     const generationStartedAt = Date.now();
     const briefingMarkdown = await generateText(
       SYSTEM_PROMPT,
@@ -98,20 +95,17 @@ export async function POST(req: Request) {
     );
     console.log('[briefing] Claude finalizou em ms:', Date.now() - generationStartedAt);
 
-    // 3. Cria lista no ClickUp dentro da pasta Campanhas
     const clickupStartedAt = Date.now();
     const lista = await createList(campanha.nome);
     console.log('[briefing] lista ClickUp criada:', lista.id);
 
-    // 4. Cria doc de briefing no ClickUp
-    const doc = await createDoc(
-      `Briefing — ${campanha.nome}`,
-      briefingMarkdown
-    );
+    const doc = await createDoc(`Briefing - ${campanha.nome}`, briefingMarkdown, {
+      id: lista.id,
+      type: 6,
+    });
     console.log('[briefing] doc ClickUp criado:', doc.id);
     console.log('[briefing] ClickUp finalizado em ms:', Date.now() - clickupStartedAt);
 
-    // 5. Atualiza campanha com IDs do ClickUp
     await supabaseAdmin
       .from('campanhas')
       .update({
@@ -121,7 +115,6 @@ export async function POST(req: Request) {
       })
       .eq('id', campanhaId);
 
-    // 6. Salva output
     await supabaseAdmin.from('campanha_outputs').insert({
       campanha_id: campanhaId,
       tipo: 'briefing',

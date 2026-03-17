@@ -17,6 +17,18 @@ function resolveAssetUrl(candidate: string, baseUrl: string): string {
   return new URL(candidate.replace(/\\/g, ''), baseUrl).toString();
 }
 
+function buildTaskDescription(docId: string, docTitle: string, feedUrl: string, storyUrl: string): string {
+  return [
+    'Conteudo gerado automaticamente pelo agente de artes do Briefly.',
+    '',
+    `Doc ClickUp: ${docTitle}`,
+    `Doc ID: ${docId}`,
+    '',
+    `Feed: ${feedUrl}`,
+    `Story: ${storyUrl}`,
+  ].join('\n');
+}
+
 async function scrapeProductImage(urlPagina: string): Promise<string> {
   const res = await fetch(urlPagina, {
     headers: {
@@ -110,7 +122,11 @@ export async function POST(req: Request) {
       `# Artes - ${campanha.nome}\n\n` +
       `## Instagram Feed (1080x1080)\n[Abrir no Canva](${feed.view_url})\n\n` +
       `## Instagram Stories (1080x1920)\n[Abrir no Canva](${story.view_url})`;
-    const doc = await createDoc(`Artes - ${campanha.nome}`, docContent);
+    const doc = await createDoc(
+      `Artes - ${campanha.nome}`,
+      docContent,
+      campanha.clickup_list_id ? { id: campanha.clickup_list_id, type: 6 } : undefined
+    );
 
     await supabaseAdmin
       .from('campanha_outputs')
@@ -123,9 +139,10 @@ export async function POST(req: Request) {
       .eq('id', storyOutput!.id);
 
     if (taskId) {
-      await updateTask(taskId, { status: 'in review' }).catch((e) =>
-        console.warn('[artes] falha ao atualizar task:', e.message)
-      );
+      await updateTask(taskId, {
+        status: 'in review',
+        description: buildTaskDescription(doc.id, doc.title, feed.view_url, story.view_url),
+      }).catch((e) => console.warn('[artes] falha ao atualizar task:', e.message));
     }
 
     await logAgente(campanhaId, 'artes', 'concluido', `Feed: ${feed.design_id} | Story: ${story.design_id}`);
