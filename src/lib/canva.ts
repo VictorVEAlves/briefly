@@ -4,11 +4,11 @@
 
 const BASE = 'https://api.canva.com/rest/v1';
 
-async function canvaFetch<T>(path: string, options?: RequestInit): Promise<T> {
+async function canvaFetch<T>(path: string, options: RequestInit | undefined, token: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${process.env.CANVA_API_KEY!}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...options?.headers,
     },
@@ -26,7 +26,8 @@ async function canvaFetch<T>(path: string, options?: RequestInit): Promise<T> {
 // Retorna o asset_id para uso no createDesignFromTemplate
 export async function uploadImageFromUrl(
   imageUrl: string,
-  nome: string
+  nome: string,
+  token: string
 ): Promise<{ asset_id: string }> {
   // 1. Baixa a imagem como buffer
   const imgRes = await fetch(imageUrl, {
@@ -35,37 +36,35 @@ export async function uploadImageFromUrl(
   if (!imgRes.ok) throw new Error(`Falha ao baixar imagem: ${imageUrl}`);
 
   const buffer = await imgRes.arrayBuffer();
-  const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg';
 
-  // 2. Cria job de upload no Canva
-  const uploadJob = await canvaFetch<{
-    job: { id: string; status: string; asset?: { id: string } };
-  }>('/asset-uploads', {
+  // Canva Connect API v1: Content-Type = octet-stream, nome em JSON no header
+  const metadata = JSON.stringify({ name_base64: Buffer.from(nome, 'utf8').toString('base64') });
+
+  const uploadRes = await fetch(`${BASE}/asset-uploads`, {
     method: 'POST',
-    body: JSON.stringify({ name: nome, type: 'image' }),
-  });
-
-  // 3. Sobe o arquivo binário via PUT no job
-  const uploadUrl = `${BASE}/asset-uploads/${uploadJob.job.id}`;
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'PUT',
     headers: {
-      Authorization: `Bearer ${process.env.CANVA_API_KEY!}`,
-      'Content-Type': contentType,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/octet-stream',
+      'Asset-Upload-Metadata': metadata,
     },
     body: buffer,
   });
 
   if (!uploadRes.ok) {
-    throw new Error(`Falha ao enviar imagem para Canva: ${uploadRes.status}`);
+    const errBody = await uploadRes.text();
+    throw new Error(`Canva /asset-uploads → ${uploadRes.status}: ${errBody}`);
   }
+
+  const uploadJob = await uploadRes.json() as {
+    job: { id: string; status: string; asset?: { id: string } };
+  };
 
   // 4. Aguarda conclusão do job (polling simples)
   let attempts = 0;
   while (attempts < 10) {
     const status = await canvaFetch<{
       job: { id: string; status: string; asset?: { id: string } };
-    }>(`/asset-uploads/${uploadJob.job.id}`);
+    }>(`/asset-uploads/${uploadJob.job.id}`, undefined, token);
 
     if (status.job.status === 'success' && status.job.asset?.id) {
       return { asset_id: status.job.asset.id };
@@ -81,37 +80,53 @@ export async function uploadImageFromUrl(
   throw new Error('Timeout aguardando upload no Canva');
 }
 
-// Cria um design a partir de um brand template do Canva
-// templateId: ID do template (Feed 1080x1080 ou Story 1080x1920)
-// assetId: ID do asset da imagem do produto
+type DesignResponse = {
+  design: {
+    id: string;
+    title: string;
+    urls: { view_url: string; edit_url: string };
+  };
+};
+
+// Cria um design a partir de um brand template (requer Canva Teams)
+// Se templateId estiver vazio, cria design em branco com preset de dimensões
 export async function createDesignFromTemplate(
   templateId: string,
   assetId: string,
-  titulo: string
-): Promise<{ design_id: string; view_url: string }> {
-  const design = await canvaFetch<{
-    design: {
-      id: string;
-      title: string;
-      urls: { view_url: string; edit_url: string };
+  titulo: string,
+  token: string
+): Promise<{ design_id: string; view_url: string; edit_url: string }> {
+  if (templateId) {
+    const design = await canvaFetch<DesignResponse>('/designs', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: titulo,
+        brand_template_id: templateId,
+        data: { product_image: { type: 'image', asset_id: assetId } },
+      }),
+    }, token);
+    return {
+      design_id: design.design.id,
+      view_url: design.design.urls.view_url,
+      edit_url: design.design.urls.edit_url,
     };
-  }>('/designs', {
+  }
+
+  // Fallback: cria design em branco com dimensões customizadas
+  // Feed=1080x1080, Story=1080x1920
+  const isFeed = titulo.toLowerCase().includes('feed');
+  const dimensions = isFeed
+    ? { width: 1080, height: 1350 }   // Instagram Feed portrait
+    : { width: 1080, height: 1920 };  // Instagram Story
+
+  const design = await canvaFetch<DesignResponse>('/designs', {
     method: 'POST',
-    body: JSON.stringify({
-      title: titulo,
-      brand_template_id: templateId,
-      data: {
-        // Campo "product_image" deve existir no template Canva como data field
-        product_image: {
-          type: 'image',
-          asset_id: assetId,
-        },
-      },
-    }),
-  });
+    body: JSON.stringify({ title: titulo, design_type: { type: 'custom', ...dimensions } }),
+  }, token);
 
   return {
     design_id: design.design.id,
     view_url: design.design.urls.view_url,
+    edit_url: design.design.urls.edit_url,
   };
 }

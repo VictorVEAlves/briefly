@@ -6,6 +6,7 @@ export async function POST(req: NextRequest) {
   let especialidade: string;
   let instrucoes: string | undefined;
   let ativo_por: string | undefined;
+  let cor: string | undefined;
 
   try {
     const body = await req.json();
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
     especialidade = body.especialidade;
     instrucoes = body.instrucoes;
     ativo_por = body.ativo_por;
+    cor = body.cor;
 
     if (!nome || !especialidade) throw new Error('nome e especialidade sao obrigatorios');
   } catch {
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
       status: 'idle',
       ativo: true,
       emoji: '🤖',
-      cor: '#4a4a6a',
+      cor: typeof cor === 'string' && cor.trim() ? cor.trim() : '#4a4a6a',
       updated_at: new Date().toISOString(),
     })
     .select()

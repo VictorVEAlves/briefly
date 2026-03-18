@@ -19,7 +19,8 @@ export type OutputTipo =
   | 'email'
   | 'whatsapp'
   | 'arte_feed'
-  | 'arte_story';
+  | 'arte_story'
+  | 'relatorio';
 
 export type AgenteNome =
   | 'orchestrator'
@@ -27,7 +28,8 @@ export type AgenteNome =
   | 'tasks'
   | 'email'
   | 'whatsapp'
-  | 'artes';
+  | 'artes'
+  | 'analytics';
 
 // ----- Entidades do banco -----------------------------------
 
@@ -153,6 +155,12 @@ export type Database = {
         Update: AgenteUpdate;
         Relationships: [];
       };
+      canva_tokens: {
+        Row: CanvaToken;
+        Insert: CanvaTokenInsert;
+        Update: CanvaTokenUpdate;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -208,6 +216,32 @@ export type WhatsAppMessage = {
   lista: string;
   mensagem: string;
 };
+
+// ----- Canva tokens ----------------------------------------
+
+export type CanvaToken = {
+  id: string;
+  user_id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scopes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type CanvaTokenInsert = {
+  id?: string;
+  user_id?: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scopes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type CanvaTokenUpdate = Partial<CanvaTokenInsert>;
 
 // ----- Agente -----------------------------------------------
 

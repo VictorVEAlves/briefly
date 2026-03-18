@@ -169,3 +169,46 @@ export function isOutputCompleted(output: Pick<CampanhaOutput, 'status'>) {
 export function isOutputAwaitingApproval(output: Pick<CampanhaOutput, 'status'>) {
   return output.status === 'pronto';
 }
+
+export function isOutputTerminal(output: Pick<CampanhaOutput, 'status'>) {
+  return (
+    output.status === 'pronto' ||
+    output.status === 'aprovado' ||
+    output.status === 'erro'
+  );
+}
+
+export function getExpectedOutputTypes(campanha: Campanha): OutputTipo[] {
+  const types: OutputTipo[] = ['briefing'];
+  const canais = Array.isArray(campanha.canais) ? campanha.canais : [];
+
+  if (canais.includes('email')) types.push('email');
+  if (canais.includes('whatsapp')) types.push('whatsapp');
+  if (canais.includes('instagram_feed')) types.push('arte_feed');
+  if (canais.includes('instagram_stories')) types.push('arte_story');
+
+  return types;
+}
+
+export function isCampaignReady(campanha: Campanha, outputs: CampanhaOutput[]) {
+  const expectedTypes = getExpectedOutputTypes(campanha);
+  if (expectedTypes.length === 0) return false;
+
+  const latestByType = new Map<OutputTipo, CampanhaOutput>();
+  for (const output of outputs) {
+    if (output.campanha_id !== campanha.id) continue;
+    if (!expectedTypes.includes(output.tipo as OutputTipo)) continue;
+
+    const current = latestByType.get(output.tipo as OutputTipo);
+    if (!current || new Date(output.created_at).getTime() > new Date(current.created_at).getTime()) {
+      latestByType.set(output.tipo as OutputTipo, output);
+    }
+  }
+
+  if (latestByType.size !== expectedTypes.length) return false;
+
+  const latestOutputs = Array.from(latestByType.values());
+  const hasCompletedOutput = latestOutputs.some(isOutputCompleted);
+
+  return hasCompletedOutput && latestOutputs.every(isOutputTerminal);
+}

@@ -5,7 +5,7 @@
 // 4. Creates a ClickUp doc with the rendered messages
 // 5. Updates the ClickUp task with doc metadata and message preview
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -24,6 +24,13 @@ Regras:
 - Link do produto no final
 - Use emojis moderadamente (1-2 por mensagem)
 - Escreva em portugues do Brasil informal mas profissional
+
+Principios de copy para WhatsApp:
+- Hook na primeira linha: dor, oportunidade ou novidade — sem enrolacao
+- Especifico > vago: cite o percentual, o preco, o prazo exato
+- Angulos por lista: grupo_vip = escassez e exclusividade; tallos = rotina e recorrencia; base_geral = volume e alcance
+- Uma mensagem, uma acao: link no final, CTA direto
+- Emojis funcionam como marcadores visuais — use no maximo 2-3 por mensagem, no inicio de linha
 
 IMPORTANTE: Sua resposta deve ser apenas um JSON array valido, sem markdown e sem explicacoes.
 Formato: [{"lista": "nome_da_lista", "mensagem": "texto completo da mensagem"}]`;
@@ -127,7 +134,9 @@ export async function POST(req: Request) {
       .single();
 
     const briefingContent = briefingOutput?.conteudo ?? '';
-    const listas = ['base geral'];
+    // Listas padrão da Fast PDR Tools — cada uma recebe mensagem com ângulo diferente
+    // grupo_vip = escassez/exclusividade | tallos = recorrência | base_geral = volume
+    const listas = ['grupo_vip', 'tallos', 'base_geral'];
 
     const rawResponse = await generateText(
       SYSTEM_PROMPT,

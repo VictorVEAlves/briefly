@@ -20,14 +20,16 @@ export async function POST(req: Request) {
   // 1. Verifica se todos os outputs estão aprovados
   const { data: outputs, error: outputsError } = await supabaseAdmin
     .from('campanha_outputs')
-    .select('id, status')
+    .select('id, status, tipo')
     .eq('campanha_id', campanhaId);
 
   if (outputsError) {
     return NextResponse.json({ error: outputsError.message }, { status: 500 });
   }
 
-  const allApproved = outputs?.every((o) => o.status === 'aprovado');
+  const relevantOutputs = (outputs ?? []).filter((output) => output.tipo !== 'relatorio');
+  const allApproved =
+    relevantOutputs.length > 0 && relevantOutputs.every((output) => output.status === 'aprovado');
   if (!allApproved) {
     return NextResponse.json(
       { error: 'Nem todos os outputs foram aprovados' },

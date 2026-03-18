@@ -94,6 +94,23 @@ async function processTaskCreated(event: Extract<ClickUpWebhookEvent, { event: '
     return;
   }
 
+  // Deduplicacao: ignora se o agente ja foi iniciado nos ultimos 60s (evita duplo disparo com tasks/route)
+  const since = new Date(Date.now() - 60_000).toISOString();
+  const { data: recentLog } = await supabaseAdmin
+    .from('agente_logs')
+    .select('id')
+    .eq('campanha_id', campanha.id)
+    .eq('agente', agenteValue)
+    .eq('status', 'iniciado')
+    .gte('created_at', since)
+    .limit(1)
+    .maybeSingle();
+
+  if (recentLog) {
+    console.log(`[webhook] agente ${agenteValue} ja iniciado recentemente para campanha ${campanha.id} — ignorando`);
+    return;
+  }
+
   console.log(`[webhook] disparando agente ${agenteValue} para campanha ${campanha.id}`);
   await dispatchAgent(agentePath, campanha.id, task.id, origin);
 }

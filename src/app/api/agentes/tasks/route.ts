@@ -2,7 +2,7 @@
 // Cria tasks no ClickUp baseado nos canais selecionados na campanha
 // Tasks com agente_responsavel disparam os agentes via webhook ClickUp
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
@@ -52,7 +52,7 @@ function buildTasks(
 
   if (canais.includes('instagram_feed')) {
     tasks.push({
-      name: 'Arte Instagram Feed (1080x1080)',
+      name: 'Arte Instagram Feed (1080x1350)',
       description: 'Gerado automaticamente pelo agente de artes do Briefly',
       due_date: calcularDueDate(periodoInicio, -4),
       priority: 1,
@@ -122,43 +122,65 @@ function getAgentTag(tags?: string[]): string | null {
 async function dispatchGeneratedAgents(
   baseUrl: string,
   campanhaId: string,
-  createdTasks: Array<{ id: string; tags?: string[] }>
+  createdTasks: Array<{ id: string; name: string; tags?: string[] }>
 ): Promise<void> {
+  // Para agentes de texto: passa o primeiro taskId encontrado
   const firstTaskByAgent = new Map<string, string>();
-
   for (const task of createdTasks) {
     const agent = getAgentTag(task.tags);
-    if (agent && !firstTaskByAgent.has(agent)) {
+    if (agent && agent !== 'artes' && !firstTaskByAgent.has(agent)) {
       firstTaskByAgent.set(agent, task.id);
     }
   }
 
-  await Promise.allSettled(
-    Array.from(firstTaskByAgent.entries()).map(async ([agent, taskId]) => {
-      const pathByAgent: Record<string, string> = {
-        email: '/api/agentes/email',
-        whatsapp: '/api/agentes/whatsapp',
-        artes: '/api/agentes/artes',
-      };
+  // Para o agente de artes: passa feedTaskId e storyTaskId separados
+  const arteTasks = createdTasks.filter((t) => getAgentTag(t.tags) === 'artes');
+  const feedTask = arteTasks.find((t) => t.name.toLowerCase().includes('feed'));
+  const storyTask = arteTasks.find((t) =>
+    t.name.toLowerCase().includes('stor')
+  );
 
-      const path = pathByAgent[agent];
-      if (!path) return;
+  const dispatches: Array<() => Promise<void>> = [];
 
+  // Agentes de texto
+  for (const [agent, taskId] of Array.from(firstTaskByAgent.entries())) {
+    const pathByAgent: Record<string, string> = {
+      email: '/api/agentes/email',
+      whatsapp: '/api/agentes/whatsapp',
+    };
+    const path = pathByAgent[agent];
+    if (!path) continue;
+    dispatches.push(async () => {
       const response = await callAgent(path, { campanhaId, taskId }, { baseUrl });
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'erro desconhecido');
         throw new Error(`${agent} -> ${response.status}: ${errorText}`);
       }
-    })
-  ).then(async (results) => {
-    const failures = results.filter((result) => result.status === 'rejected');
-    if (failures.length > 0) {
-      failures.forEach((failure) => {
-        if (failure.status === 'rejected') {
-          console.error('[tasks] falha ao disparar agente:', failure.reason);
-        }
-      });
-    }
+    });
+  }
+
+  // Agente de artes (apenas se há tarefas de arte)
+  if (arteTasks.length > 0) {
+    dispatches.push(async () => {
+      const body = {
+        campanhaId,
+        feedTaskId: feedTask?.id,
+        storyTaskId: storyTask?.id,
+      };
+      const response = await callAgent('/api/agentes/artes', body, { baseUrl });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'erro desconhecido');
+        throw new Error(`artes -> ${response.status}: ${errorText}`);
+      }
+    });
+  }
+
+  await Promise.allSettled(dispatches.map((fn) => fn())).then((results) => {
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.error('[tasks] falha ao disparar agente:', result.reason);
+      }
+    });
   });
 }
 

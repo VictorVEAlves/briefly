@@ -6,7 +6,7 @@
 // 5. Persists ClickUp IDs on campanha
 // 6. Saves the output in campanha_outputs
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -20,7 +20,13 @@ Seu publico: profissionais PDR autonomos, iniciantes, tecnicos de granizo e reve
 
 Gere um briefing completo e estrategico de campanha de marketing em Markdown.
 Seja especifico, use os dados fornecidos e escreva em portugues do Brasil.
-Tom: profissional, direto, orientado a resultados.`;
+Tom: profissional, direto, orientado a resultados.
+
+Principios de marketing:
+- Beneficios > features: descreva o resultado para o profissional, nao o atributo do produto
+- Especificidade: use numeros, prazos, percentuais sempre que possivel
+- Linguagem do cliente: use os termos que o publico PDR usa (granizo, amassado, dent, paintless)
+- Cada secao do briefing deve responder uma pergunta de negocio especifica`;
 
 function buildBriefingPrompt(campanha: Record<string, unknown>): string {
   const linhas = [
@@ -93,7 +99,7 @@ export async function POST(req: Request) {
     const briefingMarkdown = await generateText(
       SYSTEM_PROMPT,
       buildBriefingPrompt(campanha as Record<string, unknown>),
-      1800
+      3000
     );
     console.log('[briefing] Claude finalizou em ms:', Date.now() - generationStartedAt);
 

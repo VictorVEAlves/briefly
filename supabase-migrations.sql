@@ -35,7 +35,7 @@ create index if not exists idx_campanhas_archived_at on campanhas(archived_at);
 create table if not exists campanha_outputs (
   id uuid default gen_random_uuid() primary key,
   campanha_id uuid references campanhas(id) on delete cascade,
-  tipo text not null,        -- 'briefing' | 'email' | 'whatsapp' | 'arte_feed' | 'arte_story'
+  tipo text not null,        -- 'briefing' | 'email' | 'whatsapp' | 'arte_feed' | 'arte_story' | 'relatorio'
   conteudo text,             -- markdown ou HTML gerado
   url_canva text,            -- para artes
   clickup_doc_id text,

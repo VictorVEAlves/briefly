@@ -24,6 +24,7 @@ const TIPO_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
   arte_feed: 'Arte feed',
   arte_story: 'Arte story',
+  relatorio: 'Relatorio analytics',
 };
 
 const AGENTE_LABELS: Record<string, string> = {
@@ -33,6 +34,7 @@ const AGENTE_LABELS: Record<string, string> = {
   email: 'Email marketing',
   whatsapp: 'Mensagens WhatsApp',
   artes: 'Artes e criativos',
+  analytics: 'Relatorio de performance',
 };
 
 const CANAL_LABELS: Record<string, string> = {
@@ -90,7 +92,7 @@ function DetailRow({
 }
 
 function AgentTimeline({ logs }: { logs: AgenteLog[] }) {
-  const agentes = ['orchestrator', 'briefing', 'tasks', 'email', 'whatsapp', 'artes'];
+  const agentes = ['orchestrator', 'briefing', 'tasks', 'email', 'whatsapp', 'artes', 'analytics'];
   const latestByAgent: Record<string, AgenteLog> = {};
 
   for (const log of logs) {
@@ -159,6 +161,40 @@ function AgentTimeline({ logs }: { logs: AgenteLog[] }) {
         );
       })}
     </div>
+  );
+}
+
+function RelatorioCard({ output }: { output: CampanhaOutput }) {
+  const html = output.conteudo ? (marked.parse(output.conteudo) as string) : '';
+
+  return (
+    <OutputFrame
+      title={TIPO_LABELS.relatorio}
+      status={output.status}
+      subtitle="Relatorio automatico de performance com dados de GA4 e Search Console."
+      footer={
+        <div className="min-h-[1.25rem]">
+          {output.clickup_doc_id ? (
+            <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">
+              ClickUp doc: {output.clickup_doc_id}
+            </span>
+          ) : null}
+        </div>
+      }
+    >
+      <div className="rounded-[26px] border border-[var(--color-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(246,243,237,0.96))] p-5 shadow-[0_24px_60px_-36px_rgba(17,20,27,0.22)]">
+        <div className="mb-5 flex items-center justify-between border-b border-dashed border-[var(--color-border)] pb-4">
+          <span className="font-mono text-[11px] uppercase tracking-[0.24em] text-[var(--color-text-muted)]">
+            Performance report
+          </span>
+          <span className="rounded-full border border-[var(--color-border)] bg-white/75 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">
+            Auto aprovado
+          </span>
+        </div>
+
+        <div className="editorial-prose max-h-[560px] overflow-y-auto pr-2" dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    </OutputFrame>
   );
 }
 
@@ -605,8 +641,10 @@ export default function AprovacaoClient({
     }
   };
 
+  const confirmableOutputs = outputs.filter((output) => output.tipo !== 'relatorio');
   const allOutputsApproved =
-    outputs.length > 0 && outputs.every((o) => o.status === 'aprovado');
+    confirmableOutputs.length > 0 &&
+    confirmableOutputs.every((output) => output.status === 'aprovado');
   const isApproved = campanha.status === 'aprovada';
 
   function renderOutput(output: CampanhaOutput) {
@@ -630,6 +668,9 @@ export default function AprovacaoClient({
     }
     if (output.tipo === 'arte_feed' || output.tipo === 'arte_story') {
       return <ArteCard key={output.id} output={output} isApproving={isApproving} onApprove={onApprove} />;
+    }
+    if (output.tipo === 'relatorio') {
+      return <RelatorioCard key={output.id} output={output} />;
     }
     return null;
   }

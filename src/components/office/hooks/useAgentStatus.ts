@@ -16,6 +16,7 @@ import {
   type OfficeMetrics,
   type OfficeStatusStore,
   isActiveCampaign,
+  isCampaignReady,
   isOutputCompleted,
 } from '../agents/agentConfig';
 
@@ -49,6 +50,7 @@ const OUTPUT_LABELS: Record<OutputTipo, string> = {
   whatsapp: 'mensagem',
   arte_feed: 'arte feed',
   arte_story: 'arte story',
+  relatorio: 'relatorio',
 };
 
 export function useAgentStatus(): OfficeStatusStore {
@@ -504,49 +506,6 @@ function hasCompletedWork(
   }
 
   return outputs.some(isOutputCompleted);
-}
-
-function isCampaignReady(campanha: Campanha, outputs: CampanhaOutput[]) {
-  const expectedTypes = getExpectedOutputTypes(campanha);
-  if (expectedTypes.length === 0) return false;
-
-  const latestByType = new Map<OutputTipo, CampanhaOutput>();
-  for (const output of outputs) {
-    if (output.campanha_id !== campanha.id) continue;
-    if (!expectedTypes.includes(output.tipo as OutputTipo)) continue;
-
-    const current = latestByType.get(output.tipo as OutputTipo);
-    if (!current || toTimestamp(output.created_at) > toTimestamp(current.created_at)) {
-      latestByType.set(output.tipo as OutputTipo, output);
-    }
-  }
-
-  if (latestByType.size !== expectedTypes.length) return false;
-
-  const latestOutputs = Array.from(latestByType.values());
-  const hasCompletedOutput = latestOutputs.some(isOutputCompleted);
-
-  return hasCompletedOutput && latestOutputs.every(isOutputTerminal);
-}
-
-function getExpectedOutputTypes(campanha: Campanha): OutputTipo[] {
-  const types: OutputTipo[] = ['briefing'];
-  const canais = Array.isArray(campanha.canais) ? campanha.canais : [];
-
-  if (canais.includes('email')) types.push('email');
-  if (canais.includes('whatsapp')) types.push('whatsapp');
-  if (canais.includes('instagram_feed')) types.push('arte_feed');
-  if (canais.includes('instagram_stories')) types.push('arte_story');
-
-  return types;
-}
-
-function isOutputTerminal(output: Pick<CampanhaOutput, 'status'>) {
-  return (
-    output.status === 'pronto' ||
-    output.status === 'aprovado' ||
-    output.status === 'erro'
-  );
 }
 
 function isIgnoredOfficeErrorLog(

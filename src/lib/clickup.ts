@@ -108,6 +108,11 @@ type DocParent = {
   type: 4 | 5 | 6 | 7;
 };
 
+type PageResponse = {
+  id: string;
+  name: string;
+};
+
 export async function createDoc(
   titulo: string,
   conteudo: string,
@@ -123,9 +128,20 @@ export async function createDoc(
       method: 'POST',
       body: JSON.stringify({
         name: titulo,
+        parent: docParent,
+      }),
+    }
+  );
+
+  await cu<PageResponse>(
+    BASE_V3,
+    `/workspaces/${workspaceId}/docs/${doc.id}/pages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name: titulo,
         content: conteudo,
         content_format: 'text/md',
-        parent: docParent,
       }),
     }
   );

@@ -13,6 +13,7 @@
     "@hookform/resolvers": "^3.10.0",
     "@supabase/supabase-js": "^2.99.2",
     "@vercel/functions": "^3.4.3",
+    "google-auth-library": "^10.6.2",
     "marked": "^17.0.4",
     "next": "14.2.35",
     "react": "^18",

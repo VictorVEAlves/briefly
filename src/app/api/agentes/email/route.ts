@@ -5,7 +5,7 @@
 // 4. Creates a ClickUp doc with the generated email
 // 5. Updates the ClickUp task with the complete email for direct use
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -24,6 +24,15 @@ Regras de marca:
 - Max-width: 600px, centralizado, totalmente responsivo com media queries
 - Todos os estilos inline
 - Preheader text como <div> oculto antes do <body>
+
+Principios de copywriting de email:
+- Assunto: claro > criativo. 40-60 chars. Formatos que funcionam: "Pergunta?", "Como [resultado] em [tempo]", "[Nome], [coisa] esta pronta", "[N] maneiras de [beneficio]"
+- Preview text: complementa o assunto, nao repete. 90-130 chars. Complete o raciocinio ou gere curiosidade.
+- Estrutura do email: Hook (primeira linha prende) -> Contexto (por que importa) -> Valor (conteudo util) -> CTA (o que fazer) -> Fechamento humano
+- Paragrafos curtos: 1-3 frases. Espaco em branco. Bullets para escaneabilidade. Mobile-first.
+- Um unico CTA principal por email. Texto do botao: Acao + o que recebe. Ex: "GARANTIR MEU KIT AGORA", "VER OFERTA COMPLETA"
+- Especifico > vago: "18% OFF no PIX = economia de R$ 450 no kit de R$ 2.500" em vez de "grande desconto"
+- Beneficios > features: "atende 3x mais clientes no pico do granizo" em vez de "kit completo"
 
 Formato de saida obrigatorio (3 linhas separadas por "|||"):
 ASSUNTO: [linha de assunto, max 60 chars, sem emoji]|||PREVIEW: [texto preview, max 90 chars]|||HTML: [HTML completo do email]
@@ -119,10 +128,19 @@ export async function POST(req: Request) {
       3500
     );
 
-    const parts = rawResponse.split('|||');
-    const assunto = parts[0]?.replace(/^ASSUNTO:\s*/i, '').trim() ?? '';
-    const preview = parts[1]?.replace(/^PREVIEW:\s*/i, '').trim() ?? '';
-    const html = parts[2]?.replace(/^HTML:\s*/i, '').trim() ?? rawResponse;
+    // Split apenas nos 2 primeiros '|||' para não quebrar se o HTML contiver '|||'
+    const firstSep = rawResponse.indexOf('|||');
+    const secondSep = firstSep >= 0 ? rawResponse.indexOf('|||', firstSep + 3) : -1;
+    const assunto = (firstSep >= 0 ? rawResponse.slice(0, firstSep) : rawResponse)
+      .replace(/^ASSUNTO:\s*/i, '').trim();
+    const preview = (firstSep >= 0 && secondSep >= 0
+      ? rawResponse.slice(firstSep + 3, secondSep)
+      : ''
+    ).replace(/^PREVIEW:\s*/i, '').trim();
+    const html = (secondSep >= 0
+      ? rawResponse.slice(secondSep + 3)
+      : rawResponse
+    ).replace(/^HTML:\s*/i, '').trim();
     const conteudo = `ASSUNTO: ${assunto}\nPREVIEW: ${preview}\n\n${html}`;
 
     const doc = await createDoc(
