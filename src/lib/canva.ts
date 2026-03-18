@@ -92,18 +92,25 @@ type DesignResponse = {
 // Se templateId estiver vazio, cria design em branco com preset de dimensões
 export async function createDesignFromTemplate(
   templateId: string,
-  assetId: string,
+  assetId: string | null,
   titulo: string,
   token: string
 ): Promise<{ design_id: string; view_url: string; edit_url: string }> {
   if (templateId) {
     const design = await canvaFetch<DesignResponse>('/designs', {
       method: 'POST',
-      body: JSON.stringify({
-        title: titulo,
-        brand_template_id: templateId,
-        data: { product_image: { type: 'image', asset_id: assetId } },
-      }),
+      body: JSON.stringify(
+        assetId
+          ? {
+              title: titulo,
+              brand_template_id: templateId,
+              data: { product_image: { type: 'image', asset_id: assetId } },
+            }
+          : {
+              title: titulo,
+              brand_template_id: templateId,
+            }
+      ),
     }, token);
     return {
       design_id: design.design.id,

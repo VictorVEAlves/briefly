@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCanvaAccessToken } from '@/lib/canva/getCanvaAccessToken';
+import { getCanvaConnectionStatus } from '@/lib/canva/getCanvaAccessToken';
 import { ClickUpApiError, getList } from '@/lib/clickup';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -123,14 +123,14 @@ async function checkClickUp() {
 }
 
 async function checkCanva() {
-  const token = await getCanvaAccessToken();
-  if (token) {
+  const canva = await getCanvaConnectionStatus();
+  if (canva.connected) {
     return {
       key: 'canva',
       label: 'Canva',
       connected: true,
       summary: 'Conectado',
-      detail: 'Templates prontos para uso',
+      detail: canva.needsRefresh ? 'Token salvo, aguardando renovacao sob demanda' : 'Templates prontos para uso',
     };
   }
 

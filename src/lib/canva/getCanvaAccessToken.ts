@@ -1,32 +1,76 @@
+import type { CanvaToken } from '@/types/campanha';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const TOKEN_ENDPOINT = 'https://api.canva.com/rest/v1/oauth/token';
-const REFRESH_MARGIN_MS = 5 * 60 * 1000; // renova 5 minutos antes de expirar
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 function buildCredentials() {
-  const clientId     = process.env.CANVA_CLIENT_ID!;
+  const clientId = process.env.CANVA_CLIENT_ID!;
   const clientSecret = process.env.CANVA_CLIENT_SECRET!;
   return Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 }
 
-export async function getCanvaAccessToken(): Promise<string | null> {
-  const { data: row, error } = await supabaseAdmin
+function parseExpiresAt(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function getStoredCanvaToken(): Promise<CanvaToken | null> {
+  const { data, error } = await supabaseAdmin
     .from('canva_tokens')
     .select('*')
     .eq('user_id', 'system')
-    .single();
+    .maybeSingle();
 
-  if (error || !row) {
+  if (error) {
+    console.warn('[canva] Falha ao consultar token salvo:', error.message);
+    return null;
+  }
+
+  return (data as CanvaToken | null) ?? null;
+}
+
+export async function getCanvaConnectionStatus(): Promise<{
+  connected: boolean;
+  expiresAt: string | null;
+  needsRefresh: boolean;
+  scopes: string | null;
+}> {
+  const row = await getStoredCanvaToken();
+
+  if (!row?.refresh_token) {
+    return {
+      connected: false,
+      expiresAt: null,
+      needsRefresh: false,
+      scopes: null,
+    };
+  }
+
+  const expiresAt = parseExpiresAt(row.expires_at);
+
+  return {
+    connected: true,
+    expiresAt: row.expires_at ?? null,
+    needsRefresh: expiresAt !== null ? expiresAt - REFRESH_MARGIN_MS <= Date.now() : false,
+    scopes: row.scopes ?? null,
+  };
+}
+
+export async function getCanvaAccessToken(): Promise<string | null> {
+  const row = await getStoredCanvaToken();
+
+  if (!row) {
     console.warn('[canva] Nenhum token encontrado. Acesse /api/canva/authorize para conectar.');
     return null;
   }
 
-  const expiresAt = new Date(row.expires_at).getTime();
-  if (expiresAt - REFRESH_MARGIN_MS > Date.now()) {
-    return row.access_token as string;
+  const expiresAt = parseExpiresAt(row.expires_at);
+  if (expiresAt !== null && expiresAt - REFRESH_MARGIN_MS > Date.now()) {
+    return row.access_token;
   }
 
-  // Token expirado ou prestes a expirar — fazer refresh
   console.log('[canva] Access token expirado, renovando...');
 
   const refreshRes = await fetch(TOKEN_ENDPOINT, {
@@ -37,19 +81,18 @@ export async function getCanvaAccessToken(): Promise<string | null> {
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: row.refresh_token as string,
+      refresh_token: row.refresh_token,
     }).toString(),
   });
 
   if (!refreshRes.ok) {
     const errorBody = await refreshRes.text();
     console.error('[canva] Refresh falhou:', refreshRes.status, errorBody);
-    // Tokens inválidos — limpar para forçar nova autenticação
     await supabaseAdmin.from('canva_tokens').delete().eq('user_id', 'system');
     return null;
   }
 
-  const newTokens = await refreshRes.json() as {
+  const newTokens = (await refreshRes.json()) as {
     access_token: string;
     refresh_token: string;
     expires_in: number;
