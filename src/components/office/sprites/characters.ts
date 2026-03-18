@@ -5,7 +5,6 @@ import { getAnimationFrame } from './animations';
 const SKIN      = '#f2c299';
 const SKIN_SHD  = '#d9a47a';
 const OUTLINE   = '#0f172a';
-const HAIR_HI   = 'rgba(255,255,255,0.22)'; // hair highlight overlay
 const SHOE      = '#1e293b';
 const SHOE_SOLE = '#334155';
 
