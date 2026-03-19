@@ -1,52 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { DashboardAnalytics } from '../hooks/useDashboardData';
-import type { SiteAnalyticsSnapshot } from '@/lib/analytics';
+import type { SiteAnalyticsSnapshot, SiteChannelRow } from '@/lib/analytics';
 
-type CampaignAnalyticsProps = {
-  analytics: DashboardAnalytics;
-  loading: boolean;
-};
-
-export function CampaignAnalytics({ analytics, loading }: CampaignAnalyticsProps) {
+export function CampaignAnalytics() {
   return (
     <section className="rounded-[28px] border border-white/10 bg-[rgba(18,18,31,0.86)] p-5 backdrop-blur-xl">
       <div>
         <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-slate-500">
-          Campaign analytics
+          Site analytics
         </p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.04em] text-white">
-          Analise de campanhas
+          Performance do site
         </h2>
       </div>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <AnalyticsPanel
-          title="Campanhas por status"
-          items={[
-            { label: 'Prontas', value: analytics.campaignsByStatus.pronta, color: '#22c55e' },
-            { label: 'Ativas', value: analytics.campaignsByStatus.ativa, color: '#eab308' },
-            { label: 'Erros', value: analytics.campaignsByStatus.erro, color: '#ef4444' },
-            { label: 'Rascunho', value: analytics.campaignsByStatus.rascunho, color: '#64748b' },
-            { label: 'Confirmadas', value: analytics.campaignsByStatus.aprovada, color: '#3b82f6' },
-          ]}
-          loading={loading}
-        />
-        <AnalyticsPanel
-          title="Outputs por tipo"
-          items={[
-            { label: 'Briefings', value: analytics.outputsByType.briefing, color: '#a855f7' },
-            { label: 'Emails', value: analytics.outputsByType.email, color: '#3b82f6' },
-            { label: 'WhatsApp', value: analytics.outputsByType.whatsapp, color: '#22c55e' },
-            { label: 'Arte Feed', value: analytics.outputsByType.arte_feed, color: '#f97316' },
-            { label: 'Arte Story', value: analytics.outputsByType.arte_story, color: '#fb923c' },
-            { label: 'Relatorios', value: analytics.outputsByType.relatorio, color: '#14b8a6' },
-          ]}
-          loading={loading}
-        />
-      </div>
-
       <SiteMetrics />
     </section>
   );
@@ -102,58 +69,31 @@ function SiteMetrics() {
 
   const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
+  const fmtMoney = (n: number) =>
+    n >= 1_000_000
+      ? `R$ ${(n / 1_000_000).toFixed(1)}M`
+      : n >= 1_000
+        ? `R$ ${(n / 1_000).toFixed(1)}k`
+        : `R$ ${n.toFixed(0)}`;
+
   const delta = (curr: number, prev: number) => {
     if (prev === 0) return null;
     return ((curr - prev) / prev) * 100;
   };
 
-  const funnel = data
-    ? [
-        {
-          label: 'Impressões',
-          value: data.gsc.impressions,
-          prev: data.gsc.prev.impressions,
-          color: '#6366f1',
-          sub: `CTR ${fmtPct(data.gsc.ctr)}`,
-        },
-        {
-          label: 'Cliques',
-          value: data.gsc.clicks,
-          prev: data.gsc.prev.clicks,
-          color: '#3b82f6',
-          sub: null,
-        },
-        {
-          label: 'Sessões',
-          value: data.ga4.sessions,
-          prev: data.ga4.prev.sessions,
-          color: '#22c55e',
-          sub: null,
-        },
-        {
-          label: 'Conversões',
-          value: data.ga4.conversions,
-          prev: data.ga4.prev.conversions,
-          color: '#f59e0b',
-          sub: null,
-        },
-      ]
-    : [];
-
   const maxPageSessions = data ? Math.max(...data.ga4.topPages.map((p) => p.sessions), 1) : 1;
   const maxKwClicks = data ? Math.max(...data.gsc.keywords.map((k) => k.clicks), 1) : 1;
-  const visibleKeywords = showAllKeywords ? data?.gsc.keywords.slice(0, 10) : data?.gsc.keywords.slice(0, 5);
+  const visibleKeywords = showAllKeywords
+    ? data?.gsc.keywords.slice(0, 10)
+    : data?.gsc.keywords.slice(0, 5);
 
   return (
-    <div className="mt-5 rounded-[24px] border border-white/8 bg-[rgba(8,8,15,0.5)] p-4">
-      {/* Header */}
+    <div className="mt-5">
+      {/* Controls */}
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-white">Performance do site</p>
-          <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            {data ? `${data.period.startDate} → ${data.period.endDate}` : 'carregando...'}
-          </p>
-        </div>
+        <p className="font-mono text-[10px] text-slate-500">
+          {data ? `${data.period.startDate} → ${data.period.endDate}` : 'carregando...'}
+        </p>
         <div className="flex items-center gap-1.5">
           {([7, 30, 90] as Period[]).map((p) => (
             <button
@@ -179,29 +119,29 @@ function SiteMetrics() {
         </div>
       </div>
 
-      {/* Loading skeleton */}
+      {/* Loading */}
       {loading && (
         <div className="mt-4 animate-pulse space-y-3">
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-20 rounded-xl bg-white/5" />
+              <div key={i} className="h-18 rounded-xl bg-white/5" />
             ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="h-36 rounded-xl bg-white/5" />
-            <div className="h-36 rounded-xl bg-white/5" />
+            <div className="h-32 rounded-xl bg-white/5" />
+            <div className="h-32 rounded-xl bg-white/5" />
           </div>
         </div>
       )}
 
       {/* Not configured */}
       {!loading && error === 'not_configured' && (
-        <p className="mt-3 text-sm text-slate-500">Google Analytics não configurado.</p>
+        <p className="mt-4 text-sm text-slate-500">Google Analytics não configurado.</p>
       )}
 
       {/* Error */}
       {!loading && error && error !== 'not_configured' && (
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-4 flex items-center gap-3">
           <p className="text-xs text-red-400">{error}</p>
           <button
             onClick={() => void load(period)}
@@ -214,60 +154,32 @@ function SiteMetrics() {
 
       {/* Data */}
       {!loading && !error && data && (
-        <div className="mt-4 space-y-4">
-          {/* Funnel cards */}
-          <div className="grid grid-cols-4 gap-1.5">
-            {funnel.map((step, i) => {
-              const d = delta(step.value, step.prev);
-              return (
-                <div key={step.label} className="relative">
-                  <div className="rounded-xl border border-white/6 bg-white/3 p-3 text-center">
-                    <p className="font-mono text-lg font-bold text-white">{fmtNum(step.value)}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-400">{step.label}</p>
-                    {step.sub && (
-                      <p className="mt-1 font-mono text-[10px]" style={{ color: step.color }}>
-                        {step.sub}
-                      </p>
-                    )}
-                    {d !== null && (
-                      <p
-                        className={`mt-1 font-mono text-[10px] font-semibold ${d >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
-                      >
-                        {d >= 0 ? '↑' : '↓'} {Math.abs(d).toFixed(1)}%
-                      </p>
-                    )}
-                  </div>
-                  {i < funnel.length - 1 && (
-                    <span className="absolute -right-1 top-1/2 z-10 -translate-y-1/2 text-slate-600 text-xs">
-                      ›
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Pills */}
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-white/8 bg-white/4 px-2.5 py-1 font-mono text-[10px] text-slate-400">
-              CTR {fmtPct(data.gsc.ctr)}
-            </span>
-            <span className="rounded-full border border-white/8 bg-white/4 px-2.5 py-1 font-mono text-[10px] text-slate-400">
-              Pos. média {data.gsc.averagePosition.toFixed(1)}
-            </span>
-            {data.ga4.revenue > 0 && (
-              <span className="rounded-full border border-white/8 bg-white/4 px-2.5 py-1 font-mono text-[10px] text-slate-400">
-                Receita R${' '}
-                {data.ga4.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-              </span>
-            )}
-          </div>
-
-          {/* Keywords + Top pages grid */}
-          <div className="grid gap-3 xl:grid-cols-2">
-            {/* Top keywords */}
+        <div className="mt-4 space-y-5">
+          {/* ── SEO (Google Search Console) ── */}
+          <div className="rounded-[20px] border border-white/6 bg-[rgba(8,8,15,0.5)] p-4">
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.24em] text-indigo-400/80">
+              SEO · Google Search Console
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <MetricCard
+                label="Impressões"
+                value={fmtNum(data.gsc.impressions)}
+                delta={delta(data.gsc.impressions, data.gsc.prev.impressions)}
+                color="#6366f1"
+              />
+              <MetricCard
+                label="Cliques"
+                value={fmtNum(data.gsc.clicks)}
+                delta={delta(data.gsc.clicks, data.gsc.prev.clicks)}
+                color="#3b82f6"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Pill label={`CTR ${fmtPct(data.gsc.ctr)}`} />
+              <Pill label={`Pos. média ${data.gsc.averagePosition.toFixed(1)}`} />
+            </div>
             {data.gsc.keywords.length > 0 && (
-              <div className="rounded-xl border border-white/6 bg-white/2 p-3">
+              <div className="mt-3">
                 <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
                   Top palavras-chave
                 </p>
@@ -295,17 +207,68 @@ function SiteMetrics() {
                 {data.gsc.keywords.length > 5 && (
                   <button
                     onClick={() => setShowAllKeywords((v) => !v)}
-                    className="mt-2 font-mono text-[9px] uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition"
+                    className="mt-2 font-mono text-[9px] uppercase tracking-[0.2em] text-slate-500 transition hover:text-slate-300"
                   >
                     {showAllKeywords ? '↑ ver menos' : `↓ ver mais (${data.gsc.keywords.length})`}
                   </button>
                 )}
               </div>
             )}
+          </div>
 
-            {/* Top pages */}
+          {/* ── Tráfego (Google Analytics 4) ── */}
+          <div className="rounded-[20px] border border-white/6 bg-[rgba(8,8,15,0.5)] p-4">
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.24em] text-emerald-400/80">
+              Tráfego · Google Analytics 4
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <MetricCard
+                label="Sessões"
+                value={fmtNum(data.ga4.sessions)}
+                delta={delta(data.ga4.sessions, data.ga4.prev.sessions)}
+                color="#22c55e"
+              />
+              <MetricCard
+                label="Usuários ativos"
+                value={fmtNum(data.ga4.activeUsers)}
+                delta={delta(data.ga4.activeUsers, data.ga4.prev.activeUsers)}
+                color="#34d399"
+              />
+              <MetricCard
+                label="Conversões"
+                value={fmtNum(data.ga4.conversions)}
+                delta={delta(data.ga4.conversions, data.ga4.prev.conversions)}
+                color="#f59e0b"
+              />
+              <MetricCard
+                label="Taxa de conversão"
+                value={fmtPct(data.ga4.conversionRate)}
+                delta={null}
+                color="#f59e0b"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {data.ga4.revenue > 0 && (
+                <Pill
+                  label={`Receita R$ ${data.ga4.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`}
+                />
+              )}
+              {data.ga4.avgOrderValue > 0 && (
+                <Pill
+                  label={`Ticket médio R$ ${data.ga4.avgOrderValue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`}
+                />
+              )}
+            </div>
+            {data.ga4.topChannels.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  Canais de aquisição
+                </p>
+                <ChannelsBreakdown channels={data.ga4.topChannels} fmtNum={fmtNum} fmtMoney={fmtMoney} />
+              </div>
+            )}
             {data.ga4.topPages.length > 0 && (
-              <div className="rounded-xl border border-white/6 bg-white/2 p-3">
+              <div className="mt-3">
                 <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
                   Top páginas
                 </p>
@@ -338,41 +301,106 @@ function SiteMetrics() {
   );
 }
 
-function AnalyticsPanel({
-  title,
-  items,
-  loading,
-}: {
-  title: string;
-  items: Array<{ label: string; value: number; color: string }>;
-  loading: boolean;
-}) {
-  const maxValue = Math.max(...items.map((item) => item.value), 1);
+const CHANNEL_LABELS: Record<string, string> = {
+  'Organic Search': 'Busca orgânica',
+  'Direct': 'Direto',
+  'Email': 'Email',
+  'Organic Social': 'Social orgânico',
+  'Paid Search': 'Busca paga',
+  'Referral': 'Referência',
+  'Unassigned': 'Não atribuído',
+  'Cross-network': 'Cross-network',
+  'Paid Social': 'Social pago',
+  'Organic Video': 'Vídeo orgânico',
+  'Paid Video': 'Vídeo pago',
+};
 
+const CHANNEL_COLORS: Record<string, string> = {
+  'Organic Search': '#6366f1',
+  'Direct': '#94a3b8',
+  'Email': '#f59e0b',
+  'Organic Social': '#ec4899',
+  'Paid Search': '#3b82f6',
+  'Referral': '#14b8a6',
+  'Cross-network': '#8b5cf6',
+  'Paid Social': '#f43f5e',
+};
+
+function ChannelsBreakdown({
+  channels,
+  fmtNum,
+  fmtMoney,
+}: {
+  channels: SiteChannelRow[];
+  fmtNum: (n: number) => string;
+  fmtMoney: (n: number) => string;
+}) {
+  const maxSessions = Math.max(...channels.map((c) => c.sessions), 1);
   return (
-    <div className="rounded-[24px] border border-white/8 bg-[rgba(8,8,15,0.5)] p-4">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <div className="mt-4 space-y-3">
-        {items.map((item) => (
-          <div key={item.label}>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-400">{item.label}</p>
-              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-300">
-                {loading ? '--' : item.value}
+    <div className="space-y-2">
+      {channels.map((ch) => {
+        const label = CHANNEL_LABELS[ch.channel] ?? ch.channel;
+        const color = CHANNEL_COLORS[ch.channel] ?? '#64748b';
+        return (
+          <div key={ch.channel}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex-1 truncate text-xs text-slate-300">{label}</span>
+              <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                {fmtNum(ch.sessions)} sess.
               </span>
+              {ch.revenue > 0 && (
+                <span className="shrink-0 font-mono text-[10px] text-emerald-400">
+                  {fmtMoney(ch.revenue)}
+                </span>
+              )}
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/6">
               <div
-                className="h-full rounded-full transition-all duration-300"
+                className="h-full rounded-full transition-all"
                 style={{
-                  width: `${loading ? 24 : Math.max(8, (item.value / maxValue) * 100)}%`,
-                  backgroundColor: item.color,
+                  width: `${Math.max(4, (ch.sessions / maxSessions) * 100)}%`,
+                  backgroundColor: `${color}99`,
                 }}
               />
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  delta,
+  color,
+}: {
+  label: string;
+  value: string;
+  delta: number | null;
+  color: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/6 bg-white/3 p-3 text-center">
+      <p className="font-mono text-xl font-bold text-white">{value}</p>
+      <p className="mt-0.5 text-[11px] text-slate-400">{label}</p>
+      {delta !== null && (
+        <p
+          className={`mt-1 font-mono text-[10px] font-semibold ${delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
+          style={delta === 0 ? { color } : undefined}
+        >
+          {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Pill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-white/8 bg-white/4 px-2.5 py-1 font-mono text-[10px] text-slate-400">
+      {label}
+    </span>
   );
 }

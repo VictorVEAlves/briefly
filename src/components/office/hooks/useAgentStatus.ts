@@ -35,7 +35,8 @@ const EMPTY_SNAPSHOT: OfficeSnapshot = {
 };
 
 const DONE_WINDOW_MS = 2500;
-const SNAPSHOT_POLL_MS = 1500;
+// Realtime handles live updates — polling is only a safety net for missed events
+const SNAPSHOT_POLL_MS = 30_000;
 type RealtimeChannelStatus =
   | 'SUBSCRIBED'
   | 'TIMED_OUT'

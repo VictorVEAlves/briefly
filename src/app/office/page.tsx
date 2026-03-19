@@ -80,7 +80,7 @@ export default function OfficePage() {
                 <StatusBar metrics={globalMetrics} />
               </>
             ) : (
-              <div className="absolute inset-0 pt-[142px] sm:pt-[134px] lg:pt-[108px]">
+              <div className="absolute inset-0 overflow-y-auto pt-[142px] sm:pt-[134px] lg:pt-[108px]">
                 <Dashboard
                   coreAgents={coreAgents}
                   extraAgents={extraAgents}

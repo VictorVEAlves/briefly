@@ -108,7 +108,7 @@ export default function Dashboard({
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-5 overflow-y-auto px-4 pb-8 pt-4 sm:px-6">
+    <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 pb-8 pt-4 sm:px-6">
       <MetricsBar
         metrics={metrics}
         analytics={analytics}
@@ -146,7 +146,7 @@ export default function Dashboard({
         />
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_390px]">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.45fr)_390px]">
         <div className="space-y-5">
           <AgentsGrid
             agents={coreAgents}
@@ -181,7 +181,7 @@ export default function Dashboard({
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_390px]">
         <div ref={analyticsRef} className={cn('scroll-mt-28')}>
-          <CampaignAnalytics analytics={analytics} loading={loading} />
+          <CampaignAnalytics />
         </div>
         <IntegrationsStatus integrations={integrations} loading={loading} />
       </div>

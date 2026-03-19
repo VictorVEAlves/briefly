@@ -13,57 +13,109 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { generateText } from '@/lib/claude';
 import { createList, createDoc } from '@/lib/clickup';
 import { logAgente, setAgentStatus, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
+import { renderUtmLinksMarkdown } from '@/lib/utm';
+import { FAST_BRAND_CONTEXT } from '@/lib/brand-context';
 
-const SYSTEM_PROMPT = `Voce e um especialista em marketing digital para o mercado brasileiro de ferramentas PDR (Paintless Dent Repair) automotivo.
-A Fast PDR Tools e uma empresa de Curitiba que vende ferramentas profissionais para reparadores de amassados sem pintura.
-Seu publico: profissionais PDR autonomos, iniciantes, tecnicos de granizo e revendedores.
+const SYSTEM_PROMPT = `Voce e o estrategista de marketing da Fast PDR Tools. Seu trabalho e transformar os dados de uma campanha em um briefing completo que vai guiar TODOS os outros agentes (email, WhatsApp, artes).
 
-Gere um briefing completo e estrategico de campanha de marketing em Markdown.
-Seja especifico, use os dados fornecidos e escreva em portugues do Brasil.
-Tom: profissional, direto, orientado a resultados.
+${FAST_BRAND_CONTEXT}
 
-Principios de marketing:
-- Beneficios > features: descreva o resultado para o profissional, nao o atributo do produto
-- Especificidade: use numeros, prazos, percentuais sempre que possivel
-- Linguagem do cliente: use os termos que o publico PDR usa (granizo, amassado, dent, paintless)
-- Cada secao do briefing deve responder uma pergunta de negocio especifica`;
+## Seu papel
+
+Voce nao gera textos de marketing — voce cria a ESTRATEGIA que guia quem gera. O briefing precisa ser tao claro e especifico que qualquer pessoa (ou agente de IA) consiga criar o email, o WhatsApp e a arte sem precisar inventar nada.
+
+## Regras de escrita
+
+- Portugues do Brasil, sem acentos nos titulos de secao (compatibilidade Markdown)
+- Seja ESPECIFICO: numeros, prazos, percentuais, calculos de economia. "18% OFF no PIX em um kit de R$ 3.500 = economia de R$ 630" e melhor que "grande desconto".
+- Cada secao deve responder uma PERGUNTA DE NEGOCIO, nao preencher espaco.
+- O tom do briefing e interno/estrategico — e um documento de trabalho, nao marketing final.
+- Maximo de clareza: se o email agent ler so a secao 8 (CTA), ele precisa saber exatamente o que escrever.
+
+## Estrutura obrigatoria do output
+
+# Briefing Estrategico: [Nome da Campanha]
+
+## 1. Visao geral
+Uma frase que resume a campanha inteira. O que estamos vendendo, pra quem, por que agora.
+Periodo exato. Contexto de mercado (ex: temporada de granizo, Black Friday, lancamento).
+
+## 2. Objetivo e meta
+O que queremos que aconteca? Vendas? Leads? Awareness?
+Meta numerica se possivel. Ex: "Vender 30 unidades do Kit Granizo no periodo" ou "Gerar 200 cliques no link do produto".
+
+## 3. Produto em destaque
+Nome exato do produto. O que ele faz. Por que ele e relevante AGORA.
+Faixa de preco. Diferenciais tecnicos que importam pro profissional.
+O que o concorrente oferece de similar e por que a Fast e melhor.
+
+## 4. Oferta e mecanica promocional
+Desconto PIX: X% = economia de R$ Y no produto de R$ Z.
+Desconto cartao: X%.
+Parcelamento: ate Nx de R$ Y.
+Validade exata da oferta.
+Regras: cumulativo? frete incluso? estoque limitado?
+
+## 5. Publico-alvo e angulos de comunicacao
+Para cada segmento do publico, definir:
+- Quem e (martelinheiro autonomo, tecnico de granizo, iniciante, revendedor)
+- Qual a dor ou desejo principal
+- Qual angulo de comunicacao funciona (escassez, economia, produtividade, status)
+
+## 6. Tom, voz e diretrizes de linguagem
+Tom exato para essa campanha. Palavras a usar. Palavras a evitar.
+Nivel de urgencia. Nivel de exclusividade.
+Exemplos de frases que funcionam vs frases proibidas.
+
+## 7. Estrategia por canal
+Para CADA canal selecionado:
+- Email: qual o angulo do assunto? qual o hook? qual o CTA?
+- WhatsApp: qual a diferenca entre grupo VIP, Tallos e base geral?
+- Instagram Feed: qual a headline da arte? qual a imagem ideal?
+- Instagram Stories: qual o formato? sequencia de stories?
+
+## 8. CTA principal
+O texto exato do CTA. Ex: "GARANTIR MEU KIT COM 18% OFF"
+A URL de destino.
+O senso de urgencia: por que agir agora?
+
+## 9. Diferenciais competitivos a destacar
+Top 3 diferenciais a usar nessa campanha especifica (nao generico — escolher os mais relevantes pro produto e momento).
+
+## 10. Checklist de ativacao
+Lista de tudo que precisa estar pronto antes do lancamento:
+- [ ] Precos atualizados no site
+- [ ] Email pronto e testado
+- [ ] WhatsApp programado
+- [ ] Artes aprovadas
+- [ ] UTMs configuradas`;
 
 function buildBriefingPrompt(campanha: Record<string, unknown>): string {
   const linhas = [
-    `# Briefing: ${campanha.nome}`,
-    `**Periodo:** ${campanha.periodo_inicio} a ${campanha.periodo_fim}`,
-    `**Produto em destaque:** ${campanha.produto_destaque}`,
+    `DADOS DA CAMPANHA:`,
+    `- Nome: ${campanha.nome}`,
+    `- Periodo: ${campanha.periodo_inicio} a ${campanha.periodo_fim}`,
+    `- Produto em destaque: ${campanha.produto_destaque}`,
   ];
 
-  if (campanha.url_produto) linhas.push(`**URL do produto:** ${campanha.url_produto}`);
+  if (campanha.url_produto) linhas.push(`- URL do produto: ${campanha.url_produto}`);
 
-  const promocao: string[] = [];
-  if (campanha.desconto_pix) promocao.push(`PIX ${campanha.desconto_pix}% off`);
-  if (campanha.desconto_cartao) promocao.push(`Cartao ${campanha.desconto_cartao}% off`);
-  if (campanha.parcelamento) promocao.push(`Parcelamento: ${campanha.parcelamento}`);
-  if (promocao.length) linhas.push(`**Promocao:** ${promocao.join(' | ')}`);
+  if (campanha.desconto_pix) linhas.push(`- Desconto PIX: ${campanha.desconto_pix}%`);
+  if (campanha.desconto_cartao) linhas.push(`- Desconto Cartao: ${campanha.desconto_cartao}%`);
+  if (campanha.parcelamento) linhas.push(`- Parcelamento: ${campanha.parcelamento}`);
 
-  if (Array.isArray(campanha.publico)) {
-    linhas.push(`**Publico-alvo:** ${(campanha.publico as string[]).join(', ')}`);
+  if (Array.isArray(campanha.publico) && (campanha.publico as string[]).length > 0) {
+    linhas.push(`- Publico-alvo: ${(campanha.publico as string[]).join(', ')}`);
   }
-  if (Array.isArray(campanha.canais)) {
-    linhas.push(`**Canais:** ${(campanha.canais as string[]).join(', ')}`);
+  if (Array.isArray(campanha.canais) && (campanha.canais as string[]).length > 0) {
+    linhas.push(`- Canais: ${(campanha.canais as string[]).join(', ')}`);
   }
-  if (campanha.tom) linhas.push(`**Tom:** ${campanha.tom}`);
-  if (campanha.mensagem_central) linhas.push(`**Mensagem central:** ${campanha.mensagem_central}`);
+  if (campanha.tom) linhas.push(`- Tom: ${campanha.tom}`);
+  if (campanha.mensagem_central) linhas.push(`- Mensagem central: ${campanha.mensagem_central}`);
 
   linhas.push('');
-  linhas.push(`Com base nessas informacoes, gere um briefing completo com as secoes:
-## 1. Visao Geral
-## 2. Objetivos e Metas
-## 3. Produto e Proposta de Valor
-## 4. Promocao Detalhada
-## 5. Publico-Alvo e Segmentacao
-## 6. Tom, Voz e Diretrizes de Comunicacao
-## 7. Estrategia por Canal
-## 8. Call to Action Principal
-## 9. Diferenciais Competitivos
-## 10. Checklist de Ativacao`);
+  linhas.push('Gere o briefing estrategico completo seguindo a estrutura obrigatoria definida no system prompt.');
+  linhas.push('Seja especifico com numeros: calcule a economia real em reais quando houver dados de preco e desconto.');
 
   return linhas.join('\n');
 }
@@ -96,12 +148,21 @@ export async function POST(req: Request) {
     await setAgentStatus('briefing', 'working', `Briefing — ${campanha.nome}`, campanhaId);
 
     const generationStartedAt = Date.now();
-    const briefingMarkdown = await generateText(
+    const rawBriefing = await generateText(
       SYSTEM_PROMPT,
       buildBriefingPrompt(campanha as Record<string, unknown>),
-      3000
+      4500
     );
     console.log('[briefing] Claude finalizou em ms:', Date.now() - generationStartedAt);
+
+    const utmBlock = campanha.url_produto
+      ? renderUtmLinksMarkdown(
+          campanha.url_produto as string,
+          campanha.nome as string,
+          Array.isArray(campanha.canais) ? (campanha.canais as string[]) : []
+        )
+      : '';
+    const briefingMarkdown = rawBriefing + utmBlock;
 
     const clickupStartedAt = Date.now();
     const lista = await createList(campanha.nome);

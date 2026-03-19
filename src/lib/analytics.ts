@@ -67,6 +67,13 @@ export type CampaignAnalyticsSnapshot = {
   searchConsoleSiteUrl: string;
 };
 
+export type SiteChannelRow = {
+  channel: string;
+  sessions: number;
+  revenue: number;
+  conversions: number;
+};
+
 export type SiteAnalyticsSnapshot = {
   period: { startDate: string; endDate: string; days: number };
   ga4: {
@@ -74,8 +81,11 @@ export type SiteAnalyticsSnapshot = {
     activeUsers: number;
     revenue: number;
     conversions: number;
+    conversionRate: number;
+    avgOrderValue: number;
     prev: { sessions: number; activeUsers: number; revenue: number; conversions: number };
     topPages: Array<{ page: string; sessions: number }>;
+    topChannels: SiteChannelRow[];
   };
   gsc: {
     clicks: number;
@@ -403,8 +413,8 @@ export async function fetchSiteAnalytics(days = 30): Promise<SiteAnalyticsSnapsh
       keepEmptyRows: false,
     });
 
-  // 5 requisições em paralelo
-  const [ga4Cur, ga4Prev, ga4Pages, gscCurrent, gscPrev] = await Promise.all([
+  // 6 requisições em paralelo
+  const [ga4Cur, ga4Prev, ga4Pages, ga4Channels, gscCurrent, gscPrev] = await Promise.all([
     googleJsonFetch<GaRunReportResponse>(
       `${GA4_API_BASE}/properties/${propertyId}:runReport`,
       accessToken,
@@ -426,6 +436,25 @@ export async function fetchSiteAnalytics(days = 30): Promise<SiteAnalyticsSnapsh
           metrics: [{ name: 'sessions' }],
           orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
           limit: 5,
+          keepEmptyRows: false,
+        }),
+      }
+    ),
+    googleJsonFetch<GaRunReportResponse>(
+      `${GA4_API_BASE}/properties/${propertyId}:runReport`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          dateRanges: [{ startDate, endDate }],
+          dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+          metrics: [
+            { name: 'sessions' },
+            { name: 'totalRevenue' },
+            { name: 'keyEvents' },
+          ],
+          orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+          limit: 6,
           keepEmptyRows: false,
         }),
       }
@@ -454,9 +483,21 @@ export async function fetchSiteAnalytics(days = 30): Promise<SiteAnalyticsSnapsh
     sessions: Number(r.metricValues?.[0]?.value ?? 0),
   }));
 
+  const topChannels: SiteChannelRow[] = (ga4Channels.rows ?? []).map((r) => ({
+    channel: r.dimensionValues?.[0]?.value ?? 'Unknown',
+    sessions: Number(r.metricValues?.[0]?.value ?? 0),
+    revenue: Number(r.metricValues?.[1]?.value ?? 0),
+    conversions: Number(r.metricValues?.[2]?.value ?? 0),
+  }));
+
+  const conversionRate =
+    ga4Current.sessions > 0 ? ga4Current.conversions / ga4Current.sessions : 0;
+  const avgOrderValue =
+    ga4Current.conversions > 0 ? ga4Current.revenue / ga4Current.conversions : 0;
+
   return {
     period: { startDate, endDate, days },
-    ga4: { ...ga4Current, prev: ga4PrevData, topPages },
+    ga4: { ...ga4Current, conversionRate, avgOrderValue, prev: ga4PrevData, topPages, topChannels },
     gsc: {
       clicks: gscCurrent.clicks,
       impressions: gscCurrent.impressions,

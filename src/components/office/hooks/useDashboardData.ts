@@ -83,7 +83,11 @@ const EMPTY_STATE: DashboardState = {
   error: null,
 };
 
-const REFRESH_INTERVAL_MS = 8000;
+// Realtime subscription handles live campaign/output changes.
+// This interval is a fallback for integrations status and missed events.
+const REFRESH_INTERVAL_MS = 30_000;
+
+const INTEGRATIONS_REFRESH_MS = 5 * 60_000; // 5 minutes — integrations rarely change
 
 export function useDashboardData() {
   const supabaseRef = useRef(
@@ -94,7 +98,29 @@ export function useDashboardData() {
   );
   const refreshTimerRef = useRef<number | null>(null);
   const initializedRef = useRef(false);
+  const integrationsRef = useRef<OfficeIntegrationStatus[]>([]);
+  const integrationsLastFetchedRef = useRef<number>(0);
   const [state, setState] = useState<DashboardState>(EMPTY_STATE);
+
+  const refreshIntegrations = useCallback(async () => {
+    try {
+      const response = await fetch('/api/office/integrations', { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = (await response.json()) as { integrations: OfficeIntegrationStatus[] };
+      integrationsRef.current = data.integrations;
+      integrationsLastFetchedRef.current = Date.now();
+      setState((current) => ({ ...current, integrations: data.integrations }));
+    } catch {
+      // non-critical — leave stale integrations
+    }
+  }, []);
+
+  // Refresh integrations on mount and every 5 minutes
+  useEffect(() => {
+    void refreshIntegrations();
+    const interval = window.setInterval(() => void refreshIntegrations(), INTEGRATIONS_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [refreshIntegrations]);
 
   const refresh = useCallback(async () => {
     const supabase = supabaseRef.current;
@@ -120,20 +146,8 @@ export function useDashboardData() {
         .order('created_at', { ascending: false })
         .limit(24);
 
-      const integrationsPromise = fetch('/api/office/integrations', {
-        cache: 'no-store',
-      }).then(async (response) => {
-        if (!response.ok) {
-          throw new Error('Nao foi possivel verificar integracoes');
-        }
-
-        return (await response.json()) as {
-          integrations: OfficeIntegrationStatus[];
-        };
-      });
-
-      const [campaignsResult, pendingOutputsResult, integrationsResult] =
-        await Promise.allSettled([campaignsPromise, pendingOutputsPromise, integrationsPromise]);
+      const [campaignsResult, pendingOutputsResult] =
+        await Promise.allSettled([campaignsPromise, pendingOutputsPromise]);
 
       if (campaignsResult.status !== 'fulfilled') {
         throw campaignsResult.reason;
@@ -170,10 +184,7 @@ export function useDashboardData() {
         recentCampaigns,
         analytics: buildAnalytics(campaigns, outputs),
         pendingApprovalCampaignId,
-        integrations:
-          integrationsResult.status === 'fulfilled'
-            ? integrationsResult.value.integrations
-            : [],
+        integrations: integrationsRef.current,
         loading: false,
         refreshing: false,
         error: null,

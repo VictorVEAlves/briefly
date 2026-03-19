@@ -1,7 +1,6 @@
 'use client';
 
 import { cn } from '@/components/ui/chrome';
-import { getCanvaAuthorizeHref } from '@/lib/canva/authorizeHref';
 import type { OfficeConnectionState } from '../agents/agentConfig';
 import type { OfficeTabId } from '../OfficeTabs';
 
@@ -88,19 +87,11 @@ export function Header({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {canvaConnected === true && (
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.24em] text-emerald-200">
-                <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                Canva
-              </span>
-            )}
             {canvaConnected === false && (
-              <a
-                href={getCanvaAuthorizeHref()}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-orange-400/40 bg-orange-500/20 px-4 font-mono text-[11px] uppercase tracking-[0.24em] text-white transition duration-150 hover:bg-orange-500/28"
-              >
-                Conectar Canva
-              </a>
+              <span className="flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-500/10 px-2 py-0.5 font-mono text-[9px] text-amber-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                1 alerta
+              </span>
             )}
             <HeaderButton onClick={onNewCampaign}>+ Campanha</HeaderButton>
             <HeaderButton onClick={onHire} tone="secondary">

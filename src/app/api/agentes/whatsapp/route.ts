@@ -13,52 +13,82 @@ import { generateText, parseJsonFromResponse } from '@/lib/claude';
 import { createDoc, updateTask } from '@/lib/clickup';
 import { logAgente, setAgentStatus, validateInternalSecret, unauthorizedResponse } from '@/lib/agente-utils';
 import type { WhatsAppMessage } from '@/types/campanha';
+import { buildUtmUrl, campaignToSlug } from '@/lib/utm';
+import { FAST_BRAND_CONTEXT } from '@/lib/brand-context';
 
-const SYSTEM_PROMPT = `Voce e um copywriter especializado em mensagens de WhatsApp marketing para ferramentas de PDR automotivo.
-Escreve para a Fast PDR Tools, empresa de Curitiba.
+const SYSTEM_PROMPT = `Voce e o copywriter de WhatsApp da Fast PDR Tools. Voce recebe um briefing estrategico e gera mensagens prontas para disparo.
 
-Regras:
-- Maximo 3 paragrafos curtos por mensagem
-- Primeira linha: saudacao com {{nome}}
-- Destaque o desconto PIX se disponivel
-- Link do produto no final
-- Use emojis moderadamente (1-2 por mensagem)
-- Escreva em portugues do Brasil informal mas profissional
+${FAST_BRAND_CONTEXT}
 
-Principios de copy para WhatsApp:
-- Hook na primeira linha: dor, oportunidade ou novidade — sem enrolacao
-- Especifico > vago: cite o percentual, o preco, o prazo exato
-- Angulos por lista: grupo_vip = escassez e exclusividade; tallos = rotina e recorrencia; base_geral = volume e alcance
-- Uma mensagem, uma acao: link no final, CTA direto
-- Emojis funcionam como marcadores visuais — use no maximo 2-3 por mensagem, no inicio de linha
+## Seu papel
 
-IMPORTANTE: Sua resposta deve ser apenas um JSON array valido, sem markdown e sem explicacoes.
-Formato: [{"lista": "nome_da_lista", "mensagem": "texto completo da mensagem"}]`;
+Criar mensagens de WhatsApp curtas, diretas e que geram clique. Cada lista recebe uma mensagem com angulo diferente.
+
+## Angulos por lista (SEGUIR SEMPRE)
+
+- **grupo_vip**: Escassez + exclusividade. Esses sao os melhores clientes. Eles recebem primeiro, com vantagem que outros nao tem. Tom: "Voce ta recebendo antes de todo mundo."
+- **tallos**: Recorrencia + rotina profissional. Sao tecnicos que compram com frequencia. Tom: "Hora de repor o kit" ou "Essa ferramenta nova vai acelerar seu servico."
+- **base_geral**: Volume + oportunidade. Publico mais amplo, muitos ainda nao compraram. Tom: "Conhece a Fast? Essa e a hora de testar." ou "O desconto que faltava pra voce montar seu kit."
+
+## Regras de formatacao
+
+1. Primeira linha: saudacao com {{nome}} — ex: "Fala, {{nome}}! 🔧"
+2. Maximo 3 paragrafos curtos (2-3 linhas cada)
+3. Emojis: maximo 2-3 por mensagem, usados como marcadores visuais no inicio de linha
+4. Link do produto no final, nunca no meio
+5. CTA direto na ultima linha: "Acessa aqui e garante o seu:" + link
+6. Tom: informal tecnico. Como um vendedor que conhece o cliente pelo nome.
+
+## Especificidade
+
+- "18% no PIX = R$ 630 de economia no Kit Granizo Pro" >>> "desconto especial"
+- "Estoque pronto, sai de Curitiba amanha" >>> "entrega rapida"
+- "So 12 unidades em estoque" >>> "estoque limitado" (se for verdade)
+
+## Formato de saida OBRIGATORIO
+
+Retorne APENAS um JSON array valido. Sem markdown, sem explicacao, sem texto antes ou depois.
+
+[
+  {"lista": "grupo_vip", "mensagem": "texto completo da mensagem com {{nome}} e link"},
+  {"lista": "tallos", "mensagem": "texto completo"},
+  {"lista": "base_geral", "mensagem": "texto completo"}
+]`;
+
+type UtmUrls = { grupo_vip: string; tallos: string; base_geral: string };
 
 function buildWhatsAppPrompt(
   campanha: Record<string, unknown>,
   briefingContent: string,
-  listas: string[]
+  listas: string[],
+  utmUrls: UtmUrls
 ): string {
-  const listasTexto = listas.length > 0 ? listas.join(', ') : 'base geral';
+  return `BRIEFING ESTRATEGICO DA CAMPANHA (leia TUDO antes de escrever):
 
-  return `Gere mensagens de WhatsApp para a campanha "${campanha.nome}" da Fast PDR Tools.
+${briefingContent}
 
-Listas a atingir: ${listasTexto}
+---
 
-Dados da campanha:
+DADOS OPERACIONAIS:
+- Campanha: ${campanha.nome}
 - Produto: ${campanha.produto_destaque}
-- URL: ${campanha.url_produto ?? 'https://www.fastpdrtools.com.br'}
 - Desconto PIX: ${campanha.desconto_pix ? `${campanha.desconto_pix}%` : 'nao informado'}
 - Parcelamento: ${campanha.parcelamento ?? 'nao informado'}
 - Tom: ${campanha.tom}
-- Mensagem central: ${campanha.mensagem_central ?? ''}
+- Mensagem central: ${campanha.mensagem_central ?? 'extrair do briefing'}
 
-Resumo do briefing:
-${briefingContent.slice(0, 1000)}
+URLS POR LISTA (usar a URL correta em cada mensagem):
+- grupo_vip: ${utmUrls.grupo_vip}
+- tallos: ${utmUrls.tallos}
+- base_geral: ${utmUrls.base_geral}
 
-Gere uma mensagem personalizada para cada lista: ${listasTexto}.
-Retorne somente o JSON array no formato especificado.`;
+INSTRUCOES:
+1. Leia o briefing INTEIRO, especialmente a secao 7 (Estrategia por Canal > WhatsApp).
+2. Use os angulos definidos no briefing para cada lista.
+3. Use o CTA da secao 8.
+4. Calcule a economia real se houver dados.
+5. Cada mensagem deve ter a URL correta da sua lista (${listas.join(', ')}).
+6. Retorne APENAS o JSON array, nada mais.`;
 }
 
 function validateMessages(data: unknown): data is WhatsAppMessage[] {
@@ -137,11 +167,18 @@ export async function POST(req: Request) {
     // Listas padrão da Fast PDR Tools — cada uma recebe mensagem com ângulo diferente
     // grupo_vip = escassez/exclusividade | tallos = recorrência | base_geral = volume
     const listas = ['grupo_vip', 'tallos', 'base_geral'];
+    const baseUrl = (campanha.url_produto as string | null) ?? 'https://www.fastpdrtools.com.br';
+    const slug = campaignToSlug(campanha.nome as string);
+    const utmUrls: UtmUrls = {
+      grupo_vip: buildUtmUrl(baseUrl, 'whatsapp_vip', slug),
+      tallos: buildUtmUrl(baseUrl, 'whatsapp_tallos', slug),
+      base_geral: buildUtmUrl(baseUrl, 'whatsapp_base', slug),
+    };
 
     const rawResponse = await generateText(
       SYSTEM_PROMPT,
-      buildWhatsAppPrompt(campanha as Record<string, unknown>, briefingContent, listas),
-      1200
+      buildWhatsAppPrompt(campanha as Record<string, unknown>, briefingContent, listas, utmUrls),
+      2000
     );
 
     let messages: WhatsAppMessage[];

@@ -5,6 +5,10 @@
     {
       "path": "/api/internal/campanhas/reconcile-clickup",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/internal/campanhas/auto-reports",
+      "schedule": "0 8 * * 1"
     }
   ]
 }

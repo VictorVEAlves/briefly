@@ -133,18 +133,43 @@ export async function createDoc(
     }
   );
 
-  await cu<PageResponse>(
+  // ClickUp auto-creates an empty root page when a doc is created.
+  // Update that root page with content instead of creating a sub-page.
+  const pagesData = await cu<{ pages?: PageResponse[] }>(
     BASE_V3,
-    `/workspaces/${workspaceId}/docs/${doc.id}/pages`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        name: titulo,
-        content: conteudo,
-        content_format: 'text/md',
-      }),
-    }
+    `/workspaces/${workspaceId}/docs/${doc.id}/pages`
   );
+
+  const rootPageId = pagesData.pages?.[0]?.id;
+
+  if (rootPageId) {
+    await cu<PageResponse>(
+      BASE_V3,
+      `/workspaces/${workspaceId}/docs/${doc.id}/pages/${rootPageId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: titulo,
+          content: conteudo,
+          content_format: 'text/md',
+        }),
+      }
+    );
+  } else {
+    // Fallback: root page not found, create one
+    await cu<PageResponse>(
+      BASE_V3,
+      `/workspaces/${workspaceId}/docs/${doc.id}/pages`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: titulo,
+          content: conteudo,
+          content_format: 'text/md',
+        }),
+      }
+    );
+  }
 
   return { id: doc.id, title: doc.name };
 }
